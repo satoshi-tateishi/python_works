@@ -1,0 +1,43 @@
+{
+  "categories": [
+    {
+      "name": "ビューティー＆コスメ",
+      "template": "文面A",
+      "subcategories": [
+        {"name": "スキンケア", "url": "https://www.qoo10.jp/cat/120000012"},
+        {"name": "ベースメイク", "url": "https://www.qoo10.jp/cat/120000013"},
+        {"name": "ポイントメイク", "url": "https://www.qoo10.jp/cat/120000014"},
+        {"name": "ボディ・ハンド・フットケア", "url": "https://www.qoo10.jp/cat/120000018"},
+        {"name": "脱毛・除毛", "url": "https://www.qoo10.jp/cat/120000019"},
+        {"name": "ヘア", "url": "https://www.qoo10.jp/cat/120000020"},
+        {"name": "メンズビューティー", "url": "https://www.qoo10.jp/cat/120000023"}
+      ]
+    },
+    {
+      "name": "サプリ・ダイエット",
+      "template": "文面A",
+      "subcategories": [
+        {"name": "サプリメント", "url": "https://www.qoo10.jp/cat/120000052"},
+        {"name": "ダイエット", "url": "https://www.qoo10.jp/cat/120000054"},
+        {"name": "健康食品・飲料", "url": "https://www.qoo10.jp/cat/120000055"},
+        {"name": "美容サポート", "url": "https://www.qoo10.jp/cat/120000053"}
+      ]
+    },
+    {
+      "name": "家電・PC・ゲーム",
+      "template": "文面B",
+      "subcategories": [
+        {"name": "美容・健康家電", "url": "https://www.qoo10.jp/cat/120000028"},
+        {"name": "電子タバコ・加熱式たばこ", "url": "https://www.qoo10.jp/cat/120000042"}
+      ]
+    },
+    {
+      "name": "ペットフード・用品",
+      "template": "新文面",
+      "subcategories": [
+        {"name": "犬用品", "url": "https://www.qoo10.jp/cat/120000043"},
+        {"name": "猫用品", "url": "https://www.qoo10.jp/cat/120000044"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "spreadsheet_id": "YOUR_SPREADSHEET_ID",
+  "credentials_path": "credentials.json",
+  "limit_per_category": 50,
+  "request_delay": 1.5
+}
