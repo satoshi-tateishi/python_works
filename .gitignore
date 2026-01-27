@@ -42,3 +42,4 @@ Thumbs.db
 # Claude / MCP
 .claude/
 .mcp.json
+GEMINI.md
