@@ -262,6 +262,9 @@ def export_wsm():
     
     if not venue:
         return "No venue data", 400
+    
+    if not selected_channels:
+        return "No channels selected", 400
 
     try:
         conn = get_db_connection()

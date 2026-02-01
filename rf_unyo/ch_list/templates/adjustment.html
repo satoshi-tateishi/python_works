@@ -23,11 +23,11 @@
             transition: all 0.2s;
             position: relative;
             background-color: white;
-            padding-bottom: 8px; /* ライン表示用の余白 (2px*3 + gap 1px*2) */
+            padding-bottom: 16px; /* ライン表示用の余白 (4px*3 + gap 2px*2) */
         }
         .ch-btn.disabled {
-            background-color: #f9fafb;
-            color: #d1d5db;
+            background-color: #e5e7eb; /* より濃いグレーに変更 */
+            color: #9ca3af; /* 文字色も少し濃くして視認性を維持 */
             cursor: not-allowed;
         }
         .ch-btn.selected {
@@ -44,12 +44,12 @@
             right: 0;
             display: flex;
             flex-direction: column;
-            gap: 1px; /* ライン間に1pxの隙間を追加 */
+            gap: 2px; /* ライン間に2pxの隙間を追加 */
             padding: 0;
         }
         .device-bar {
             width: 100%;
-            height: 2px; /* 細いライン */
+            height: 4px; /* 3pxから4pxに太く変更 */
         }
     </style>
 </head>
@@ -199,6 +199,11 @@
             const grid = document.getElementById(`grid-${index + 1}`);
             const selectedButtons = grid.querySelectorAll('.ch-btn.selected');
             const channels = Array.from(selectedButtons).map(btn => parseInt(btn.dataset.ch));
+
+            if (channels.length === 0) {
+                alert('チャンネルが選択されていません。');
+                return;
+            }
 
             try {
                 const response = await fetch('/export_wsm', {
