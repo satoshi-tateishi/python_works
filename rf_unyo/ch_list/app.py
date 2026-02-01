@@ -39,7 +39,15 @@ def index():
 @app.route("/adjustment")
 def adjustment():
     keep_list = session.get("keep_list", [])
-    return render_template("adjustment.html", venues=keep_list)
+    conn = get_db_connection()
+    devices = conn.execute("SELECT * FROM devices").fetchall()
+    tv_channels = conn.execute("SELECT * FROM tv_channels").fetchall()
+    conn.close()
+    
+    return render_template("adjustment.html", 
+                           venues=keep_list, 
+                           devices=[dict(d) for d in devices],
+                           tv_channels=[dict(c) for c in tv_channels])
 
 @app.route("/settings")
 def settings():

@@ -9,7 +9,9 @@
         .ch-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-            gap: 2px;
+            gap: 1px; /* 境界線としての細い隙間 */
+            background-color: #e5e7eb; /* 境界線の色 */
+            border: 1px solid #e5e7eb;
         }
         .ch-btn {
             aspect-ratio: 1/1;
@@ -17,28 +19,37 @@
             align-items: center;
             justify-content: center;
             font-size: 0.75rem;
-            border: 1px solid #e5e7eb;
             cursor: pointer;
             transition: all 0.2s;
+            position: relative;
+            background-color: white;
+            padding-bottom: 8px; /* ライン表示用の余白 (2px*3 + gap 1px*2) */
         }
         .ch-btn.disabled {
-            background-color: #f3f4f6;
+            background-color: #f9fafb;
             color: #d1d5db;
             cursor: not-allowed;
         }
         .ch-btn.selected {
-            background-color: #3b82f6;
-            color: white;
-            border-color: #2563eb;
+            background-color: #eff6ff;
+            color: #2563eb;
             font-weight: bold;
+            box-shadow: inset 0 0 0 2px #3b82f6; /* 選択時は内側に枠線 */
         }
-        .gb-indicator {
-            font-size: 10px;
-            padding: 1px 4px;
-            border-radius: 2px;
-            background-color: #ef4444;
-            color: white;
-            margin-top: 2px;
+        /* デバイスカラーインジケーター（横線） */
+        .device-indicators {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1px; /* ライン間に1pxの隙間を追加 */
+            padding: 0;
+        }
+        .device-bar {
+            width: 100%;
+            height: 2px; /* 細いライン */
         }
     </style>
 </head>
@@ -88,13 +99,48 @@
                     {% for ch in range(13, 54) %}
                     {% set ch_key = ch|string + 'CH' %}
                     {% set is_available = venue[ch_key] == '○' %}
+                    {# TVチャンネルの周波数範囲を取得 #}
+                    {% set ch_info = tv_channels | selectattr('TVchannel', 'equalto', ch) | first %}
+                    
                     <div class="ch-btn {% if not is_available %}disabled{% endif %}" 
                          data-ch="{{ ch }}"
                          data-available="{{ is_available }}"
                          onclick="selectChannel(this, {{ loop.index0 }}, {{ ch }})">
                         {{ ch }}
+                        
+                        {# デバイス対応インジケーター #}
+                        <div class="device-indicators">
+                            {% for dev in devices %}
+                                {# デバイスの色設定 #}
+                                {% set color = '#3b82f6' %} {# Default Blue (L帯) #}
+                                {% if 'COM-Ⅱ N' in dev.name %}{% set color = '#22c55e' %}{% endif %} {# Green (N帯) #}
+                                {% if 'SR2050' in dev.name %}{% set color = '#f59e0b' %}{% endif %} {# Orange (IEM) #}
+                                
+                                {# 周波数の重なりを計算 #}
+                                {% set overlap_min = [dev.minfrequency, ch_info.minfrequency] | max %}
+                                {% set overlap_max = [dev.maxfrequency, ch_info.maxfrequency] | min %}
+                                
+                                {% if overlap_min < overlap_max %}
+                                    {# チャンネル幅に対する重なりの割合と開始位置を計算 #}
+                                    {% set ch_bw = ch_info.maxfrequency - ch_info.minfrequency %}
+                                    {% set width = (overlap_max - overlap_min) / ch_bw * 100 %}
+                                    {% set left = (overlap_min - ch_info.minfrequency) / ch_bw * 100 %}
+                                    <div class="device-bar" 
+                                         style="background-color: {{ color }}; width: {{ width }}%; margin-left: {{ left }}%;" 
+                                         title="{{ dev.name }}: {{ overlap_min }} - {{ overlap_max }} kHz"></div>
+                                {% else %}
+                                    <div class="device-bar bg-transparent"></div>
+                                {% endif %}
+                            {% endfor %}
+                        </div>
                     </div>
                     {% endfor %}
+                </div>
+
+                <div class="mt-2 flex gap-4 text-[10px] text-gray-500">
+                    <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background-color: #3b82f6;"></span> EM 3732 L</div>
+                    <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background-color: #22c55e;"></span> EM 3732 N</div>
+                    <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background-color: #f59e0b;"></span> SR2050 IEM</div>
                 </div>
             </div>
             {% endfor %}
