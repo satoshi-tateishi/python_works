@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>運用調整 - RF運用候補地選定システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .ch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 2px;
+        }
+        .ch-btn {
+            aspect-ratio: 1/1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            border: 1px solid #e5e7eb;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .ch-btn.disabled {
+            background-color: #f3f4f6;
+            color: #d1d5db;
+            cursor: not-allowed;
+        }
+        .ch-btn.selected {
+            background-color: #3b82f6;
+            color: white;
+            border-color: #2563eb;
+            font-weight: bold;
+        }
+        .gb-indicator {
+            font-size: 10px;
+            padding: 1px 4px;
+            border-radius: 2px;
+            background-color: #ef4444;
+            color: white;
+            margin-top: 2px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen pb-20">
+    <nav class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
+        <h1 class="text-xl font-bold">運用調整・チャンネル選択</h1>
+        <a href="/" class="text-sm bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded">検索画面に戻る</a>
+    </nav>
+
+    <div class="container mx-auto p-4">
+        {% if not venues %}
+        <div class="bg-white p-8 rounded-lg shadow text-center">
+            <p class="text-gray-500 mb-4">キープされている施設がありません。</p>
+            <a href="/" class="text-blue-500 underline">検索画面で施設を探す</a>
+        </div>
+        {% else %}
+        <div class="space-y-6">
+            {% for venue in venues %}
+            <div class="bg-white p-6 rounded-lg shadow-md venue-card relative" 
+                 data-venue-json='{{ venue | tojson | safe }}'>
+                <!-- 削除ボタン -->
+                <button onclick='unkeepVenue({{ venue | tojson | safe }})' 
+                    class="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors" title="リストから削除">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+
+                <div class="flex justify-between items-start mb-4 pr-8">
+                    <div>
+                        <h2 class="text-xl font-bold text-gray-800">{{ venue['施設名'] }}</h2>
+                        <p class="text-sm text-gray-500">{{ venue['都道府県名'] }}{{ venue['住所'] }}</p>
+                    </div>
+                    <div class="text-right">
+                        <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">{{ venue['屋内外'] }}</span>
+                        <span class="inline-block bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">{{ venue['適用エリア'] }}</span>
+                    </div>
+                </div>
+
+                <div class="mb-2 text-sm font-semibold text-gray-700">使用チャンネル選択 (13CH - 53CH):</div>
+                <div class="ch-grid mb-2" id="grid-{{ loop.index }}">
+                    {% for ch in range(13, 54) %}
+                    {% set ch_key = ch|string + 'CH' %}
+                    {% set is_available = venue[ch_key] == '○' %}
+                    <div class="ch-btn {% if not is_available %}disabled{% endif %}" 
+                         data-ch="{{ ch }}"
+                         data-available="{{ is_available }}"
+                         onclick="selectChannel(this, {{ loop.index0 }}, {{ ch }})">
+                        {{ ch }}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- 固定フッター -->
+        <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg flex justify-center gap-4">
+            <button onclick="exportToExcel()" class="bg-green-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-green-700 transition">
+                Excel/Numbers出力 (Phase 3)
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // 施設ごとの選択状態を保持 { venueIndex: [ch1, ch2, ...] }
+        const selections = {};
+
+        function selectChannel(el, venueIndex, ch) {
+            if (el.classList.contains('disabled')) return;
+
+            if (!selections[venueIndex]) {
+                selections[venueIndex] = [];
+            }
+
+            const index = selections[venueIndex].indexOf(ch);
+            if (index > -1) {
+                // すでに選択されている場合は解除
+                selections[venueIndex].splice(index, 1);
+                el.classList.remove('selected');
+            } else {
+                // 選択されていない場合は追加
+                selections[venueIndex].push(ch);
+                el.classList.add('selected');
+            }
+        }
+
+        async function unkeepVenue(venueData) {
+            if (!confirm(`「${venueData['施設名']}」をリストから削除しますか？`)) return;
+            
+            try {
+                const response = await fetch('/unkeep', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: venueData})
+                });
+                location.reload();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function exportToExcel() {
+            const selectedData = [];
+            const venueCards = document.querySelectorAll('.venue-card');
+            
+            venueCards.forEach((card, index) => {
+                const venueData = JSON.parse(card.dataset.venueJson);
+                
+                // 変数 selections ではなく、DOMから直接選択されているチャンネルを取得
+                const grid = document.getElementById(`grid-${index + 1}`);
+                const selectedButtons = grid.querySelectorAll('.ch-btn.selected');
+                const channels = Array.from(selectedButtons).map(btn => parseInt(btn.dataset.ch));
+                
+                if (channels.length > 0) {
+                    selectedData.push({
+                        venue: venueData,
+                        selected_channels: channels.sort((a, b) => a - b)
+                    });
+                }
+            });
+
+            if (selectedData.length === 0) {
+                alert('チャンネルが選択されている施設がありません。');
+                return;
+            }
+
+            try {
+                const response = await fetch('/export', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: selectedData})
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `運用候補地リスト_${new Date().toISOString().slice(0,10)}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                } else {
+                    alert('エクスポートに失敗しました。');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('エラーが発生しました。');
+            }
+        }
+    </script>
+</body>
+</html>

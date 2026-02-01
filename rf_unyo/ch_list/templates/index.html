@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RF運用候補地選定システム</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <nav class="bg-blue-600 text-white p-4 shadow-md">
+        <h1 class="text-xl font-bold">RF運用候補地選定システム</h1>
+    </nav>
+
+    <div class="container mx-auto p-4 flex flex-col md:flex-row gap-6">
+        <!-- 左側：検索エリア -->
+        <div class="flex-1 bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-lg font-semibold mb-4 border-b pb-2">施設検索</h2>
+            <div class="flex gap-2 mb-4">
+                <input type="text" id="search-input" placeholder="施設名、住所、都道府県..." 
+                    class="flex-1 border border-gray-300 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button onclick="searchVenues()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">検索</button>
+            </div>
+            
+            <div id="results-count" class="text-sm text-gray-600 mb-2"></div>
+            <div id="search-results" class="space-y-2 max-h-[600px] overflow-y-auto">
+                <!-- 検索結果がここに表示される -->
+                <p class="text-gray-400 text-center py-8">検索キーワードを入力してください</p>
+            </div>
+        </div>
+
+        <!-- 右側：キープリスト -->
+        <div class="w-full md:w-1/3 bg-gray-50 p-6 rounded-lg shadow-md border-l-4 border-orange-400">
+            <h2 class="text-lg font-semibold mb-4 border-b pb-2 flex justify-between items-center">
+                キープリスト
+                <span id="keep-count" class="bg-orange-500 text-white text-xs px-2 py-1 rounded-full">0</span>
+            </h2>
+            <div id="keep-list" class="space-y-2">
+                <!-- キープされた施設がここに表示される -->
+                <p class="text-gray-400 text-center py-8">キープされている施設はありません</p>
+            </div>
+            
+            <div class="mt-6 border-t pt-4">
+                <button onclick="location.href='/adjustment'" class="w-full bg-green-500 text-white py-2 rounded shadow hover:bg-green-600 font-bold text-center block">
+                    運用調整へ進む (Phase 2)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function searchVenues() {
+            const query = document.getElementById('search-input').value;
+            if (!query) return;
+
+            const resultsDiv = document.getElementById('search-results');
+            resultsDiv.innerHTML = '<p class="text-center py-8">検索中...</p>';
+
+            try {
+                const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                
+                document.getElementById('results-count').innerText = `${data.length} 件見つかりました`;
+                
+                if (data.length === 0) {
+                    resultsDiv.innerHTML = '<p class="text-center py-8">該当する施設が見つかりませんでした</p>';
+                    return;
+                }
+
+                resultsDiv.innerHTML = '';
+                data.forEach(venue => {
+                    const card = document.createElement('div');
+                    card.className = 'border p-3 rounded bg-white hover:bg-blue-50 transition shadow-sm relative group';
+                    
+                    const content = document.createElement('div');
+                    content.innerHTML = `
+                        <div class="font-bold text-blue-800">${venue['施設名']}</div>
+                        <div class="text-xs text-gray-500">${venue['郵便番号']} ${venue['都道府県名']}${venue['住所']}</div>
+                        <div class="text-xs mt-1 text-gray-400 italic">${venue['屋内外']} | ${venue['適用エリア']}</div>
+                    `;
+                    card.appendChild(content);
+
+                    const btn = document.createElement('button');
+                    btn.className = 'absolute right-2 top-2 bg-orange-100 text-orange-600 px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-orange-500 hover:text-white transition';
+                    btn.innerText = 'キープ';
+                    btn.onclick = () => keepVenue(venue);
+                    card.appendChild(btn);
+
+                    resultsDiv.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error:', error);
+                resultsDiv.innerHTML = '<p class="text-red-500 text-center py-8">エラーが発生しました</p>';
+            }
+        }
+
+        async function keepVenue(venueData) {
+            try {
+                const response = await fetch('/keep', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: venueData})
+                });
+                const res = await response.json();
+                loadKeepList();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function unkeepVenue(venueData) {
+            try {
+                const response = await fetch('/unkeep', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({data: venueData})
+                });
+                loadKeepList();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function loadKeepList() {
+            try {
+                const response = await fetch('/get_keep_list');
+                const data = await response.json();
+                
+                const keepListDiv = document.getElementById('keep-list');
+                document.getElementById('keep-count').innerText = data.length;
+
+                if (data.length === 0) {
+                    keepListDiv.innerHTML = '<p class="text-gray-400 text-center py-8">キープされている施設はありません</p>';
+                    return;
+                }
+
+                keepListDiv.innerHTML = '';
+                data.forEach(venue => {
+                    const card = document.createElement('div');
+                    card.className = 'border p-2 rounded bg-orange-50 relative group hover:bg-orange-100 transition';
+                    
+                    const content = document.createElement('div');
+                    content.innerHTML = `
+                        <div class="text-sm font-bold pr-6">${venue['施設名']}</div>
+                        <div class="text-[10px] text-gray-500">${venue['都道府県名']}${venue['住所']}</div>
+                    `;
+                    card.appendChild(content);
+
+                    const unkeepBtn = document.createElement('button');
+                    unkeepBtn.className = 'absolute right-1 top-1 text-gray-400 hover:text-red-500 p-1';
+                    unkeepBtn.innerHTML = `
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    `;
+                    unkeepBtn.onclick = () => unkeepVenue(venue);
+                    card.appendChild(unkeepBtn);
+
+                    keepListDiv.appendChild(card);
+                });
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        // 初期読み込み
+        loadKeepList();
+    </script>
+</body>
+</html>
