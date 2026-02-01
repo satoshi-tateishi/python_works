@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>運用調整 - RF運用候補地選定システム</title>
+    <title>運用調整 - RFチャンネルリスト検索システム</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .ch-grid {
@@ -44,7 +44,7 @@
 </head>
 <body class="bg-gray-100 min-h-screen pb-20">
     <nav class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 class="text-xl font-bold">運用調整・チャンネル選択</h1>
+        <h1 class="text-xl font-bold">使用チャンネル選択</h1>
         <a href="/" class="text-sm bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded">検索画面に戻る</a>
     </nav>
 
@@ -67,18 +67,16 @@
                     </svg>
                 </button>
 
-                <div class="flex justify-between items-start mb-4 pr-8">
-                    <div>
+                <div class="mb-4 pr-8">
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
                         <h2 class="text-xl font-bold text-gray-800">{{ venue['施設名'] }}</h2>
-                        <p class="text-sm text-gray-500">{{ venue['都道府県名'] }}{{ venue['住所'] }}</p>
-                    </div>
-                    <div class="text-right">
                         <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">{{ venue['屋内外'] }}</span>
                         <span class="inline-block bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">{{ venue['適用エリア'] }}</span>
                     </div>
+                    <p class="text-sm text-gray-500">{{ venue['郵便番号'] }} {{ venue['都道府県名'] }}{{ venue['住所'] }}</p>
                 </div>
 
-                <div class="mb-2 text-sm font-semibold text-gray-700">使用チャンネル選択 (13CH - 53CH):</div>
+                <div class="mb-2 text-sm font-semibold text-gray-700">使用チャンネル選択 :</div>
                 <div class="ch-grid mb-2" id="grid-{{ loop.index }}">
                     {% for ch in range(13, 54) %}
                     {% set ch_key = ch|string + 'CH' %}
@@ -98,7 +96,7 @@
         <!-- 固定フッター -->
         <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg flex justify-center gap-4">
             <button onclick="exportToExcel()" class="bg-green-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-green-700 transition">
-                Excel/Numbers出力 (Phase 3)
+                Excel / Numbers 出力
             </button>
         </div>
         {% endif %}
@@ -179,7 +177,10 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    a.download = `運用候補地リスト_${new Date().toISOString().slice(0,10)}.xlsx`;
+                    // YY-MM-DD 形式の日付を取得
+                    const now = new Date();
+                    const dateStr = now.toISOString().split('T')[0];
+                    a.download = `運用連絡票_${dateStr}.xlsx`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();

@@ -3,12 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RF運用候補地選定システム</title>
+    <title>RFチャンネルリスト検索システム</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <nav class="bg-blue-600 text-white p-4 shadow-md">
-        <h1 class="text-xl font-bold">RF運用候補地選定システム</h1>
+    <nav class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
+        <h1 class="text-xl font-bold">RFチャンネルリスト検索システム</h1>
+        <a href="/settings" class="hover:bg-blue-700 p-2 rounded-full transition-colors" title="設定">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+        </a>
     </nav>
 
     <div class="container mx-auto p-4 flex flex-col md:flex-row gap-6">
@@ -17,7 +23,8 @@
             <h2 class="text-lg font-semibold mb-4 border-b pb-2">施設検索</h2>
             <div class="flex gap-2 mb-4">
                 <input type="text" id="search-input" placeholder="施設名、住所、都道府県..." 
-                    class="flex-1 border border-gray-300 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    class="flex-1 border border-gray-300 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onkeydown="if(event.key==='Enter') searchVenues()">
                 <button onclick="searchVenues()" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">検索</button>
             </div>
             
@@ -41,7 +48,7 @@
             
             <div class="mt-6 border-t pt-4">
                 <button onclick="location.href='/adjustment'" class="w-full bg-green-500 text-white py-2 rounded shadow hover:bg-green-600 font-bold text-center block">
-                    運用調整へ進む (Phase 2)
+                    使用チャンネル選択に進む
                 </button>
             </div>
         </div>
@@ -69,21 +76,21 @@
                 resultsDiv.innerHTML = '';
                 data.forEach(venue => {
                     const card = document.createElement('div');
-                    card.className = 'border p-3 rounded bg-white hover:bg-blue-50 transition shadow-sm relative group';
+                    card.className = 'border p-3 rounded bg-white hover:bg-blue-50 transition shadow-sm relative group cursor-pointer';
+                    card.onclick = () => keepVenue(venue);
                     
                     const content = document.createElement('div');
                     content.innerHTML = `
                         <div class="font-bold text-blue-800">${venue['施設名']}</div>
                         <div class="text-xs text-gray-500">${venue['郵便番号']} ${venue['都道府県名']}${venue['住所']}</div>
-                        <div class="text-xs mt-1 text-gray-400 italic">${venue['屋内外']} | ${venue['適用エリア']}</div>
+                        <div class="text-xs mt-1 text-gray-400 italic">${venue['屋内外']}, ${venue['適用エリア']}</div>
                     `;
                     card.appendChild(content);
 
-                    const btn = document.createElement('button');
-                    btn.className = 'absolute right-2 top-2 bg-orange-100 text-orange-600 px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 hover:bg-orange-500 hover:text-white transition';
-                    btn.innerText = 'キープ';
-                    btn.onclick = () => keepVenue(venue);
-                    card.appendChild(btn);
+                    const indicator = document.createElement('div');
+                    indicator.className = 'absolute right-2 top-2 bg-orange-100 text-orange-600 px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition duration-200';
+                    indicator.innerText = '＋キープ';
+                    card.appendChild(indicator);
 
                     resultsDiv.appendChild(card);
                 });
@@ -141,7 +148,7 @@
                     const content = document.createElement('div');
                     content.innerHTML = `
                         <div class="text-sm font-bold pr-6">${venue['施設名']}</div>
-                        <div class="text-[10px] text-gray-500">${venue['都道府県名']}${venue['住所']}</div>
+                        <div class="text-[10px] text-gray-500">${venue['屋内外']}, ${venue['適用エリア']}</div>
                     `;
                     card.appendChild(content);
 

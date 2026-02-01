@@ -3,6 +3,10 @@ import sqlite3
 from pathlib import Path
 import io
 import openpyxl
+import unicodedata
+import shutil
+import tempfile
+import os
 
 app = Flask(__name__)
 app.secret_key = "rf_unyo_secret_key"
@@ -11,9 +15,17 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "database.db"
 MASTER_XLSX = BASE_DIR / "masters" / "master.xlsx"
 
+def normalize_text(text):
+    if text is None:
+        return ""
+    # 全角英数字を半角に、大文字を小文字に変換
+    return unicodedata.normalize('NFKC', str(text)).lower()
+
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # SQLiteで正規化関数を使えるように登録
+    conn.create_function("NORM", 1, normalize_text)
     return conn
 
 @app.route("/")
@@ -27,6 +39,46 @@ def adjustment():
     keep_list = session.get("keep_list", [])
     return render_template("adjustment.html", venues=keep_list)
 
+@app.route("/settings")
+def settings():
+    return render_template("settings.html")
+
+@app.route("/get_settings")
+def get_settings():
+    conn = get_db_connection()
+    member = conn.execute("SELECT * FROM member_info WHERE id = 1").fetchone()
+    user = conn.execute("SELECT * FROM onsite_user WHERE id = 1").fetchone()
+    conn.close()
+    return jsonify({
+        "member": dict(member) if member else {},
+        "user": dict(user) if user else {}
+    })
+
+@app.route("/save_settings", methods=["POST"])
+def save_settings():
+    data = request.json
+    member = data.get("member", {})
+    user = data.get("user", {})
+    
+    conn = get_db_connection()
+    conn.execute("""
+        UPDATE member_info SET 
+        member_num1 = ?, member_num2 = ?, member_name = ?, 
+        department = ?, manager = ?, tel = ?, email = ?
+        WHERE id = 1
+    """, (member.get("member_num1"), member.get("member_num2"), member.get("member_name"),
+          member.get("department"), member.get("manager"), member.get("tel"), member.get("email")))
+    
+    conn.execute("""
+        UPDATE onsite_user SET 
+        name = ?, furigana = ?, tel = ?, email = ?
+        WHERE id = 1
+    """, (user.get("name"), user.get("furigana"), user.get("tel"), user.get("email")))
+    
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"})
+
 @app.route("/search")
 def search():
     query = request.args.get("q", "")
@@ -34,14 +86,18 @@ def search():
         return jsonify([])
     
     conn = get_db_connection()
-    # 施設名、住所、都道府県名から部分一致検索
+    # 検索語も同様に正規化
+    normalized_query = f"%{normalize_text(query)}%"
+    
+    # 施設名、住所、都道府県名から部分一致検索 (正規化して比較)
     sql = """
         SELECT * FROM venues 
-        WHERE 施設名 LIKE ? OR 住所 LIKE ? OR 都道府県名 LIKE ?
+        WHERE NORM(施設名) LIKE ? 
+           OR NORM(住所) LIKE ? 
+           OR NORM(都道府県名) LIKE ?
         LIMIT 100
     """
-    search_term = f"%{query}%"
-    results = conn.execute(sql, (search_term, search_term, search_term)).fetchall()
+    results = conn.execute(sql, (normalized_query, normalized_query, normalized_query)).fetchall()
     conn.close()
     
     return jsonify([dict(row) for row in results])
@@ -83,13 +139,48 @@ def export():
     print(f"DEBUG: Received data for export: {len(data)} venues")
 
     try:
-        wb = openpyxl.load_workbook(MASTER_XLSX)
+        conn = get_db_connection()
+        member = conn.execute("SELECT * FROM member_info WHERE id = 1").fetchone()
+        onsite = conn.execute("SELECT * FROM onsite_user WHERE id = 1").fetchone()
+        conn.close()
+
+        # テンプレートを一時ファイルにコピー
+        temp_dir = tempfile.mkdtemp()
+        temp_path = os.path.join(temp_dir, "temp_export.xlsx")
+        shutil.copy2(MASTER_XLSX, temp_path)
+
+        wb = openpyxl.load_workbook(temp_path)
         
         # 転記の基本設定
         START_ROW = 36
         ROW_OFFSET = 12
         SHEET_NAMES = ["master_01", "master_02", "master_03"]
         
+        # 会員情報・使用者情報の転記（全シート共通）
+        for sn in SHEET_NAMES:
+            if sn not in wb.sheetnames: continue
+            ws = wb[sn]
+            
+            # 申請区分 (D4)
+            ws.cell(row=4, column=4, value="新規")
+
+            if member:
+                ws.cell(row=4, column=13, value=member["member_num1"]) # 会員番号1 (M4)
+                ws.cell(row=4, column=16, value=member["member_num2"]) # 会員番号2 (P4)
+                ws.cell(row=4, column=23, value=member["member_name"]) # 会員名 (W4)
+                ws.cell(row=6, column=13, value=member["department"])  # 部署 (M6)
+                ws.cell(row=6, column=23, value=member["manager"])     # 運用担当者 (W6)
+                ws.cell(row=8, column=13, value=member["tel"])         # Tel (M8)
+                ws.cell(row=8, column=23, value=member["email"])       # E-mail (W8)
+            if onsite:
+                # 氏名とふりがなを組み合わせる
+                name_val = onsite["name"]
+                if onsite["furigana"]:
+                    name_val += f"（{onsite['furigana']}）"
+                ws.cell(row=13, column=15, value=name_val)             # 氏名 (O13)
+                ws.cell(row=15, column=12, value=onsite["tel"])        # Tel (L15)
+                ws.cell(row=15, column=23, value=onsite["email"])      # E-mail (W15)
+
         for i, item in enumerate(data[:12]):
             # シートの選択 (0-3 -> master_01, 4-7 -> master_02, 8-11 -> master_03)
             sheet_idx = i // 4
@@ -110,30 +201,36 @@ def export():
             
             print(f"DEBUG: Writing {venue['施設名']} to {target_sheet_name} row {current_base_row}")
             
-            # 郵便番号 (J36系)
+            # 郵便番号 (J36系 -> 第10列)
             ws.cell(row=current_base_row, column=10, value=venue.get("郵便番号", ""))
             
-            # 住所 (R36系)
+            # 住所 (R36系 -> 第18列)
             ws.cell(row=current_base_row, column=18, value=f"{venue.get('都道府県名', '')}{venue.get('住所', '')}")
             
-            # 屋内/屋外 (L38系)
+            # 屋内/屋外 (L38系 -> 第12列)
             ws.cell(row=current_base_row + 2, column=12, value=venue.get("屋内外", ""))
             
-            # 施設名 (R38系)
+            # 施設名 (R38系 -> 第18列)
             ws.cell(row=current_base_row + 2, column=18, value=venue.get("施設名", ""))
             
-            # 適用エリア名称 (O40系)
+            # 適用エリア名称 (O40系 -> 第15列)
             ws.cell(row=current_base_row + 4, column=15, value=venue.get("適用エリア", ""))
             
-            # 使用TVチャンネル (O42系)
+            # 使用TVチャンネル (O42系 -> 第15列)
             ch_text = ", ".join([str(c) for c in channels])
             cell = ws.cell(row=current_base_row + 6, column=15)
             cell.value = ch_text
             cell.data_type = 's'
 
+        # 保存してメモリに読み込む
+        wb.save(temp_path)
         output = io.BytesIO()
-        wb.save(output)
+        with open(temp_path, "rb") as f:
+            output.write(f.read())
         output.seek(0)
+
+        # 一時ファイルの削除
+        shutil.rmtree(temp_dir)
 
         return send_file(
             output,
