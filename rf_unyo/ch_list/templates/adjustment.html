@@ -169,8 +169,15 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
+                    
+                    const now = new Date();
+                    const yyyy = now.getFullYear();
+                    const mm = String(now.getMonth() + 1).padStart(2, '0');
+                    const dd = String(now.getDate()).padStart(2, '0');
+                    const dateStr = `${yyyy}-${mm}${dd}`;
+                    
                     const name = venueData['施設名'] || 'venue';
-                    a.download = `WSM_${name}.csv`;
+                    a.download = `chlist_data_${name}_${dateStr}.csv`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
@@ -229,7 +236,10 @@
                     const a = document.createElement('a');
                     a.href = url;
                     const now = new Date();
-                    const dateStr = now.toISOString().split('T')[0];
+                    const yyyy = now.getFullYear();
+                    const mm = String(now.getMonth() + 1).padStart(2, '0');
+                    const dd = String(now.getDate()).padStart(2, '0');
+                    const dateStr = `${yyyy}-${mm}${dd}`;
                     a.download = `運用連絡票_${dateStr}.${extension}`;
                     document.body.appendChild(a);
                     a.click();

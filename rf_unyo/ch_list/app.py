@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import os
 import csv
+from datetime import datetime
 
 app = Flask(__name__)
 app.secret_key = "rf_unyo_secret_key"
@@ -233,11 +234,12 @@ def export():
         # 一時ファイルの削除
         shutil.rmtree(temp_dir)
 
+        date_str = datetime.now().strftime("%Y-%m%d")
         return send_file(
             output,
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
-            download_name="運用連絡票.xlsx"
+            download_name=f"運用連絡票_{date_str}.xlsx"
         )
     except Exception as e:
         import traceback
@@ -319,12 +321,14 @@ def export_wsm():
         
         venue_name = venue.get("施設名", "venue")
         safe_name = "".join([c for c in venue_name if c.isalnum() or c in (' ', '_', '-')]).strip()
+        date_str = datetime.now().strftime("%Y-%m%d")
+        filename = f"chlist_data_{safe_name}_{date_str}.csv"
         
         return send_file(
             mem,
             mimetype="text/csv",
             as_attachment=True,
-            download_name=f"WSM_{safe_name}.csv"
+            download_name=filename
         )
     except Exception as e:
         import traceback
