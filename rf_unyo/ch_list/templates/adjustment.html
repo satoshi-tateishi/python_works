@@ -95,8 +95,8 @@
 
         <!-- 固定フッター -->
         <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg flex justify-center gap-4">
-            <button onclick="exportToExcel()" class="bg-green-600 text-white px-8 py-3 rounded-full font-bold shadow-lg hover:bg-green-700 transition">
-                Excel / Numbers 出力
+            <button onclick="exportToExcel()" class="bg-green-600 text-white px-12 py-3 rounded-full font-bold shadow-lg hover:bg-green-700 transition">
+                Excel 出力
             </button>
         </div>
         {% endif %}
@@ -141,13 +141,17 @@
         }
 
         async function exportToExcel() {
+            const selectedData = getSelectedData();
+            if (!selectedData) return;
+            await performExport('/export', 'xlsx');
+        }
+
+        function getSelectedData() {
             const selectedData = [];
             const venueCards = document.querySelectorAll('.venue-card');
             
             venueCards.forEach((card, index) => {
                 const venueData = JSON.parse(card.dataset.venueJson);
-                
-                // 変数 selections ではなく、DOMから直接選択されているチャンネルを取得
                 const grid = document.getElementById(`grid-${index + 1}`);
                 const selectedButtons = grid.querySelectorAll('.ch-btn.selected');
                 const channels = Array.from(selectedButtons).map(btn => parseInt(btn.dataset.ch));
@@ -162,11 +166,15 @@
 
             if (selectedData.length === 0) {
                 alert('チャンネルが選択されている施設がありません。');
-                return;
+                return null;
             }
+            return selectedData;
+        }
 
+        async function performExport(endpoint, extension) {
+            const selectedData = getSelectedData();
             try {
-                const response = await fetch('/export', {
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({data: selectedData})
@@ -177,10 +185,9 @@
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     a.href = url;
-                    // YY-MM-DD 形式の日付を取得
                     const now = new Date();
                     const dateStr = now.toISOString().split('T')[0];
-                    a.download = `運用連絡票_${dateStr}.xlsx`;
+                    a.download = `運用連絡票_${dateStr}.${extension}`;
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
