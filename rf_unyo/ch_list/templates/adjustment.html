@@ -76,6 +76,13 @@
                     <p class="text-sm text-gray-500">{{ venue['郵便番号'] }} {{ venue['都道府県名'] }}{{ venue['住所'] }}</p>
                 </div>
 
+                <div class="mb-4 flex gap-2">
+                    <button onclick='exportWSM({{ loop.index0 }})' 
+                        class="bg-orange-500 text-white px-4 py-1 rounded text-sm font-bold shadow hover:bg-orange-600 transition">
+                        WSM CSV 出力
+                    </button>
+                </div>
+
                 <div class="mb-2 text-sm font-semibold text-gray-700">使用チャンネル選択 :</div>
                 <div class="ch-grid mb-2" id="grid-{{ loop.index }}">
                     {% for ch in range(13, 54) %}
@@ -137,6 +144,42 @@
                 location.reload();
             } catch (error) {
                 console.error('Error:', error);
+            }
+        }
+
+        async function exportWSM(index) {
+            const card = document.querySelectorAll('.venue-card')[index];
+            const venueData = JSON.parse(card.dataset.venueJson);
+            const grid = document.getElementById(`grid-${index + 1}`);
+            const selectedButtons = grid.querySelectorAll('.ch-btn.selected');
+            const channels = Array.from(selectedButtons).map(btn => parseInt(btn.dataset.ch));
+
+            try {
+                const response = await fetch('/export_wsm', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        venue: venueData,
+                        selected_channels: channels
+                    })
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    const name = venueData['施設名'] || 'venue';
+                    a.download = `WSM_${name}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                } else {
+                    alert('WSM CSVのエクスポートに失敗しました。');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('エラーが発生しました。');
             }
         }
 

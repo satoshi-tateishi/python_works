@@ -7,6 +7,7 @@ import unicodedata
 import shutil
 import tempfile
 import os
+import csv
 
 app = Flask(__name__)
 app.secret_key = "rf_unyo_secret_key"
@@ -237,6 +238,93 @@ def export():
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
             download_name="運用連絡票.xlsx"
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return str(e), 500
+
+@app.route("/export_wsm", methods=["POST"])
+def export_wsm():
+    data = request.json
+    venue = data.get("venue")
+    selected_channels = data.get("selected_channels", [])
+    
+    if not venue:
+        return "No venue data", 400
+
+    try:
+        conn = get_db_connection()
+        tv_ch_rows = conn.execute("SELECT * FROM tv_channels ORDER BY TVchannel").fetchall()
+        conn.close()
+        
+        tv_ch_map = {row["TVchannel"]: row for row in tv_ch_rows}
+        
+        output = io.StringIO()
+        writer = csv.writer(output, lineterminator='\n')
+        writer.writerow(["name", "type", "frequency", "tolerance", "minfrequency", "maxfrequency", "priority", "squelchlevel"])
+        
+        for ch in range(13, 54):
+            ch_key = f"{ch}CH"
+            is_available = venue.get(ch_key) == '○'
+            is_selected = ch in selected_channels
+            
+            row_base = tv_ch_map.get(ch)
+            if not row_base:
+                continue
+            
+            min_f = row_base["minfrequency"]
+            max_f = row_base["maxfrequency"]
+            
+            # ガードバンド判定ロジック（シームレス版）
+            # 下限側の判定
+            if ch > 13:
+                prev_available = venue.get(f"{ch-1}CH") == '○'
+                if is_available != prev_available:
+                    # 境界が「可能」と「不可」の間の時、境界を「可能」チャンネル側に1MHz移動
+                    if is_available:
+                        min_f += 1000  # 使用可能CHなら内側に狭める
+                    else:
+                        min_f -= 1000  # 使用不可CHなら外側に広げる
+            
+            # 上限側の判定
+            if ch < 53:
+                next_available = venue.get(f"{ch+1}CH") == '○'
+                if is_available != next_available:
+                    # 境界が「可能」と「不可」の間の時、境界を「可能」チャンネル側に1MHz移動
+                    if is_available:
+                        max_f -= 1000  # 使用可能CHなら内側に狭める
+                    else:
+                        max_f += 1000  # 使用不可CHなら外側に広げる
+            
+            row_type = 2 if is_selected else 3
+            priority = 2 if is_selected else 4
+            
+            writer.writerow([
+                f"TV {ch}",
+                row_type,
+                0,
+                0,
+                min_f,
+                max_f,
+                priority,
+                5
+            ])
+            
+        writer.writerow(["Blocked", 3, 0, 0, 714000, 798000, 4, 5])
+        
+        mem = io.BytesIO()
+        mem.write(output.getvalue().encode('utf-8'))
+        mem.seek(0)
+        
+        venue_name = venue.get("施設名", "venue")
+        safe_name = "".join([c for c in venue_name if c.isalnum() or c in (' ', '_', '-')]).strip()
+        
+        return send_file(
+            mem,
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"WSM_{safe_name}.csv"
         )
     except Exception as e:
         import traceback

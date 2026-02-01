@@ -17,10 +17,19 @@ def init_db():
     print(f"Importing data into {DB_PATH} (table: venues)...")
     df.to_sql("venues", conn, if_exists="replace", index=False)
     
-    # 他の空テーブル（将来用）の作成
-    cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS equipment (id INTEGER PRIMARY KEY, name TEXT)")
-    cursor.execute("CREATE TABLE IF NOT EXISTS frequency_map (id INTEGER PRIMARY KEY, frequency REAL, channel INTEGER)")
+    # TVチャンネル情報のインポート
+    CH_CSV_PATH = BASE_DIR / "masters" / "tv_channel_japan.csv"
+    if CH_CSV_PATH.exists():
+        print(f"Importing {CH_CSV_PATH} into tv_channels...")
+        df_ch = pd.read_csv(CH_CSV_PATH)
+        df_ch.to_sql("tv_channels", conn, if_exists="replace", index=False)
+
+    # デバイス情報のインポート
+    DEV_CSV_PATH = BASE_DIR / "masters" / "Devices.csv"
+    if DEV_CSV_PATH.exists():
+        print(f"Importing {DEV_CSV_PATH} into devices...")
+        df_dev = pd.read_csv(DEV_CSV_PATH)
+        df_dev.to_sql("devices", conn, if_exists="replace", index=False)
     
     conn.commit()
     conn.close()
