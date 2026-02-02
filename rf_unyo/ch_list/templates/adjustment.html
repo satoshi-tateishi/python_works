@@ -5,57 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>運用調整 - RFチャンネルリスト検索システム</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        .ch-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
-            gap: 1px; /* 境界線としての細い隙間 */
-            background-color: #e5e7eb; /* 境界線の色 */
-            border: 1px solid #e5e7eb;
-        }
-        .ch-btn {
-            aspect-ratio: 1/1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            cursor: pointer;
-            transition: all 0.2s;
-            position: relative;
-            background-color: white;
-            padding-bottom: 16px; /* ライン表示用の余白 (4px*3 + gap 2px*2) */
-        }
-        .ch-btn.disabled {
-            background-color: #e5e7eb; /* より濃いグレーに変更 */
-            color: #9ca3af; /* 文字色も少し濃くして視認性を維持 */
-            cursor: not-allowed;
-        }
-        .ch-btn.selected {
-            background-color: #eff6ff;
-            color: #2563eb;
-            font-weight: bold;
-            box-shadow: inset 0 0 0 2px #3b82f6; /* 選択時は内側に枠線 */
-        }
-        /* デバイスカラーインジケーター（横線） */
-        .device-indicators {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            display: flex;
-            flex-direction: column;
-            gap: 2px; /* ライン間に2pxの隙間を追加 */
-            padding: 0;
-        }
-        .device-bar {
-            width: 100%;
-            height: 4px; /* 3pxから4pxに太く変更 */
-        }
+        .ch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 1px; background-color: #e5e7eb; border: 1px solid #e5e7eb; }
+        .ch-btn { aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; position: relative; background-color: white; padding-bottom: 16px; }
+        .ch-btn.disabled { background-color: #e5e7eb; color: #9ca3af; cursor: not-allowed; }
+        .ch-btn.selected { background-color: #eff6ff; color: #2563eb; font-weight: bold; box-shadow: inset 0 0 0 2px #3b82f6; }
+        .device-indicators { position: absolute; bottom: 0; left: 0; right: 0; display: flex; flex-direction: column; gap: 2px; padding: 0; }
+        .device-bar { width: 100%; height: 4px; }
+        .sortable-ghost { opacity: 0.4; background-color: #f3f4f6; }
+        .drag-handle { cursor: grab; }
+        .drag-handle:active { cursor: grabbing; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-20">
     <nav class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 class="text-xl font-bold">使用チャンネル選択（アナログ）</h1>
+        <div class="flex items-baseline gap-2">
+            <h1 class="text-xl font-bold">使用チャンネル選択（アナログ）</h1>
+            <span class="text-xs opacity-70">{{ version_str }}</span>
+        </div>
         <a href="/" class="text-sm bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded">検索画面に戻る</a>
     </nav>
 
@@ -66,241 +34,85 @@
             <a href="/" class="text-blue-500 underline">検索画面で施設を探す</a>
         </div>
         {% else %}
-        <div class="space-y-6">
+        <div id="venue-list" class="space-y-6">
             {% for venue in venues %}
-            <div class="bg-white p-6 rounded-lg shadow-md venue-card relative" 
-                 data-venue-json='{{ venue | tojson | safe }}'>
-                <!-- 削除ボタン -->
-                <button onclick='unkeepVenue({{ venue | tojson | safe }})' 
-                    class="absolute top-4 right-4 text-gray-400 hover:text-red-500 transition-colors" title="リストから削除">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-
-                <div class="mb-4 pr-8">
-                    <div class="flex items-center gap-2 mb-1 flex-wrap">
-                        <h2 class="text-xl font-bold text-gray-800">{{ venue['施設名'] }}</h2>
-                        <span class="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">{{ venue['屋内外'] }}</span>
-                        <span class="inline-block bg-gray-100 text-gray-800 text-xs px-2 py-1 rounded">{{ venue['適用エリア'] }}</span>
-                    </div>
-                    <p class="text-sm text-gray-500">{{ venue['郵便番号'] }} {{ venue['都道府県名'] }}{{ venue['住所'] }}</p>
+            <div class="bg-white p-6 rounded-lg shadow-md venue-card relative flex gap-4" data-venue-json='{{ venue | tojson | safe }}'>
+                <div class="drag-handle flex items-center text-gray-300 hover:text-gray-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" /></svg>
                 </div>
-
-                <div class="mb-4 flex gap-2">
-                    <button onclick='exportWSM({{ loop.index0 }})' 
-                        class="bg-orange-500 text-white px-4 py-1 rounded text-sm font-bold shadow hover:bg-orange-600 transition">
-                        WSM CSV 出力
+                <div class="flex-1">
+                    <button onclick='unkeepVenue({{ venue | tojson | safe }})' class="absolute top-4 right-4 text-gray-400 hover:text-red-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
-                </div>
-
-                <div class="mb-2 text-sm font-semibold text-gray-700">使用チャンネル選択 :</div>
-                <div class="ch-grid mb-2" id="grid-{{ loop.index }}">
-                    {% for ch in range(13, 54) %}
-                    {% set ch_key = ch|string + 'CH' %}
-                    {% set is_available = venue[ch_key] == '○' %}
-                    {# TVチャンネルの周波数範囲を取得 #}
-                    {% set ch_info = tv_channels | selectattr('TVchannel', 'equalto', ch) | first %}
-                    
-                    <div class="ch-btn {% if not is_available %}disabled{% endif %}" 
-                         data-ch="{{ ch }}"
-                         data-available="{{ is_available }}"
-                         onclick="selectChannel(this, {{ loop.index0 }}, {{ ch }})">
-                        {{ ch }}
-                        
-                        {# デバイス対応インジケーター #}
-                        <div class="device-indicators">
-                            {% for dev in devices %}
-                                {# デバイスの色設定 #}
-                                {% set color = '#3b82f6' %} {# Default Blue (L帯) #}
-                                {% if 'COM-Ⅱ N' in dev.name %}{% set color = '#22c55e' %}{% endif %} {# Green (N帯) #}
-                                {% if 'SR2050' in dev.name %}{% set color = '#f59e0b' %}{% endif %} {# Orange (IEM) #}
-                                
-                                {# 周波数の重なりを計算 #}
-                                {% set overlap_min = [dev.minfrequency, ch_info.minfrequency] | max %}
-                                {% set overlap_max = [dev.maxfrequency, ch_info.maxfrequency] | min %}
-                                
-                                {% if overlap_min < overlap_max %}
-                                    {# チャンネル幅に対する重なりの割合と開始位置を計算 #}
-                                    {% set ch_bw = ch_info.maxfrequency - ch_info.minfrequency %}
-                                    {% set width = (overlap_max - overlap_min) / ch_bw * 100 %}
-                                    {% set left = (overlap_min - ch_info.minfrequency) / ch_bw * 100 %}
-                                    <div class="device-bar" 
-                                         style="background-color: {{ color }}; width: {{ width }}%; margin-left: {{ left }}%;" 
-                                         title="{{ dev.name }}: {{ overlap_min }} - {{ overlap_max }} kHz"></div>
-                                {% else %}
-                                    <div class="device-bar bg-transparent"></div>
-                                {% endif %}
-                            {% endfor %}
-                        </div>
+                    <div class="mb-4">
+                        <h2 class="text-xl font-bold text-gray-800">{{ venue['施設名'] }}</h2>
+                        <p class="text-sm text-gray-500">{{ venue['都道府県名'] }}{{ venue['住所'] }}</p>
                     </div>
-                    {% endfor %}
-                </div>
-
-                <div class="mt-2 flex gap-4 text-[10px] text-gray-500">
-                    <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background-color: #3b82f6;"></span> EM 3732 L</div>
-                    <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background-color: #22c55e;"></span> EM 3732 N</div>
-                    <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full" style="background-color: #f59e0b;"></span> SR2050 IEM</div>
+                    <button onclick='exportWSM(this)' class="bg-orange-500 text-white px-4 py-1 rounded text-sm font-bold shadow hover:bg-orange-600">WSM CSV 保存</button>
+                    <div class="ch-grid mt-4">
+                        {% for ch in range(13, 54) %}
+                        {% set ch_key = ch|string + 'CH' %}{% set is_available = venue[ch_key] == '○' %}
+                        {% set ch_info_list = tv_channels | selectattr('TVchannel', 'equalto', ch) | list %}{% set ch_info = ch_info_list[0] if ch_info_list else none %}
+                        <div class="ch-btn {% if not is_available %}disabled{% endif %}" data-ch="{{ ch }}" onclick="selectChannel(this, {{ ch }})">
+                            {{ ch }}
+                            <div class="device-indicators">
+                                {% if ch_info %}{% for dev in devices %}
+                                    {% set color = '#3b82f6' %}{% if 'N' in dev.name %}{% set color = '#22c55e' %}{% endif %}{% if 'SR2050' in dev.name %}{% set color = '#f59e0b' %}{% endif %}
+                                    {% set overlap_min = [dev.minfrequency, ch_info.minfrequency] | max %}{% set overlap_max = [dev.maxfrequency, ch_info.maxfrequency] | min %}
+                                    {% if overlap_min < overlap_max %}
+                                        {% set ch_bw = ch_info.maxfrequency - ch_info.minfrequency %}
+                                        <div class="device-bar" style="background-color: {{ color }}; width: {{ (overlap_max - overlap_min) / ch_bw * 100 }}%; margin-left: {{ (overlap_min - ch_info.minfrequency) / ch_bw * 100 }}%;"></div>
+                                    {% else %}<div class="device-bar bg-transparent"></div>{% endif %}
+                                {% endfor %}{% endif %}
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
             {% endfor %}
         </div>
-
-        <!-- 固定フッター -->
-        <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg flex justify-center gap-4">
-            <button onclick="exportToExcel()" class="bg-green-600 text-white px-12 py-3 rounded-full font-bold shadow-lg hover:bg-green-700 transition">
-                Excel 出力
-            </button>
+        <div class="fixed bottom-0 left-0 right-0 bg-white border-t p-4 shadow-lg flex justify-center">
+            <button onclick="exportToExcel()" class="bg-green-600 text-white px-12 py-3 rounded-full font-bold shadow-lg hover:bg-green-700">Excel 保存</button>
         </div>
         {% endif %}
     </div>
 
     <script>
-        // 施設ごとの選択状態を保持 { venueIndex: [ch1, ch2, ...] }
-        const selections = {};
-
-        function selectChannel(el, venueIndex, ch) {
-            if (el.classList.contains('disabled')) return;
-
-            if (!selections[venueIndex]) {
-                selections[venueIndex] = [];
-            }
-
-            const index = selections[venueIndex].indexOf(ch);
-            if (index > -1) {
-                // すでに選択されている場合は解除
-                selections[venueIndex].splice(index, 1);
-                el.classList.remove('selected');
-            } else {
-                // 選択されていない場合は追加
-                selections[venueIndex].push(ch);
-                el.classList.add('selected');
-            }
+        const el = document.getElementById('venue-list');
+        if (el) { Sortable.create(el, { handle: '.drag-handle', animation: 150, ghostClass: 'sortable-ghost' }); }
+        function selectChannel(el, ch) { if (!el.classList.contains('disabled')) el.classList.toggle('selected'); }
+        async function saveAsFile(blob, filename) {
+            const reader = new FileReader();
+            reader.onload = function() { window.pywebview.api.save_file(reader.result.split(',')[1], filename); };
+            reader.readAsDataURL(blob);
         }
-
-        async function unkeepVenue(venueData) {
-            if (!confirm(`「${venueData['施設名']}」をリストから削除しますか？`)) return;
-            
-            try {
-                const response = await fetch('/unkeep', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: venueData})
-                });
-                location.reload();
-            } catch (error) {
-                console.error('Error:', error);
-            }
+        function getFormattedDate() {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
         }
-
-        async function exportWSM(index) {
-            const card = document.querySelectorAll('.venue-card')[index];
-            const venueData = JSON.parse(card.dataset.venueJson);
-            const grid = document.getElementById(`grid-${index + 1}`);
-            const selectedButtons = grid.querySelectorAll('.ch-btn.selected');
-            const channels = Array.from(selectedButtons).map(btn => parseInt(btn.dataset.ch));
-
-            if (channels.length === 0) {
-                alert('チャンネルが選択されていません。');
-                return;
-            }
-
-            try {
-                const response = await fetch('/export_wsm', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        venue: venueData,
-                        selected_channels: channels
-                    })
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    
-                    const now = new Date();
-                    const yyyy = now.getFullYear();
-                    const mm = String(now.getMonth() + 1).padStart(2, '0');
-                    const dd = String(now.getDate()).padStart(2, '0');
-                    const dateStr = `${yyyy}-${mm}${dd}`;
-                    
-                    const name = venueData['施設名'] || 'venue';
-                    a.download = `chlist_data_${name}_${dateStr}.csv`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                } else {
-                    alert('WSM CSVのエクスポートに失敗しました。');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('エラーが発生しました。');
-            }
+        async function exportWSM(btn) {
+            const card = btn.closest('.venue-card');
+            const vData = JSON.parse(card.dataset.venueJson);
+            const chs = Array.from(card.querySelectorAll('.ch-btn.selected')).map(b => parseInt(b.dataset.ch));
+            if (chs.length === 0) return alert('CH未選択');
+            const res = await fetch('/export_wsm', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({venue: vData, selected_channels: chs}) });
+            if (res.ok) await saveAsFile(await res.blob(), `wsm_${vData['施設名']}_${getFormattedDate()}.csv`);
         }
-
         async function exportToExcel() {
-            const selectedData = getSelectedData();
-            if (!selectedData) return;
-            await performExport('/export', 'xlsx');
-        }
-
-        function getSelectedData() {
             const selectedData = [];
-            const venueCards = document.querySelectorAll('.venue-card');
-            
-            venueCards.forEach((card, index) => {
-                const venueData = JSON.parse(card.dataset.venueJson);
-                const grid = document.getElementById(`grid-${index + 1}`);
-                const selectedButtons = grid.querySelectorAll('.ch-btn.selected');
-                const channels = Array.from(selectedButtons).map(btn => parseInt(btn.dataset.ch));
-                
-                if (channels.length > 0) {
-                    selectedData.push({
-                        venue: venueData,
-                        selected_channels: channels.sort((a, b) => a - b)
-                    });
-                }
+            document.querySelectorAll('.venue-card').forEach((card) => {
+                const chs = Array.from(card.querySelectorAll('.ch-btn.selected')).map(b => parseInt(b.dataset.ch));
+                if (chs.length > 0) selectedData.push({venue: JSON.parse(card.dataset.venueJson), selected_channels: chs.sort((a,b)=>a-b)});
             });
-
-            if (selectedData.length === 0) {
-                alert('チャンネルが選択されている施設がありません。');
-                return null;
-            }
-            return selectedData;
+            if (selectedData.length === 0) return alert('施設未選択');
+            const res = await fetch('/export', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({data: selectedData}) });
+            if (res.ok) await saveAsFile(await res.blob(), `運用連絡票_${getFormattedDate()}.xlsx`);
         }
-
-        async function performExport(endpoint, extension) {
-            const selectedData = getSelectedData();
-            try {
-                const response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: selectedData})
-                });
-
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    const now = new Date();
-                    const yyyy = now.getFullYear();
-                    const mm = String(now.getMonth() + 1).padStart(2, '0');
-                    const dd = String(now.getDate()).padStart(2, '0');
-                    const dateStr = `${yyyy}-${mm}${dd}`;
-                    a.download = `運用連絡票_${dateStr}.${extension}`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                } else {
-                    alert('エクスポートに失敗しました。');
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                alert('エラーが発生しました。');
+        async function unkeepVenue(vData) {
+            if (confirm(`「${vData['施設名']}」をリストから削除しますか？`)) {
+                await fetch('/unkeep', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({data:vData})});
+                location.reload();
             }
         }
     </script>

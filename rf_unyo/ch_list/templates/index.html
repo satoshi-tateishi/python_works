@@ -8,13 +8,18 @@
 </head>
 <body class="bg-gray-100 min-h-screen">
     <nav class="bg-blue-600 text-white p-4 shadow-md flex justify-between items-center">
-        <h1 class="text-xl font-bold">RFチャンネルリスト検索システム（アナログ）</h1>
-        <a href="/settings" class="hover:bg-blue-700 p-2 rounded-full transition-colors" title="設定">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-        </a>
+        <div class="flex items-baseline gap-2">
+            <h1 class="text-xl font-bold">RFチャンネルリスト検索システム（アナログ）</h1>
+            <span class="text-xs opacity-70">{{ version_str }}</span>
+        </div>
+        <div class="flex items-center gap-4">
+            <a href="/settings" class="hover:bg-blue-700 p-2 rounded-full transition-colors" title="設定">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </a>
+        </div>
     </nav>
 
     <div class="container mx-auto p-4 flex flex-col md:flex-row gap-6">
@@ -30,7 +35,6 @@
             
             <div id="results-count" class="text-sm text-gray-600 mb-2"></div>
             <div id="search-results" class="space-y-2 max-h-[600px] overflow-y-auto">
-                <!-- 検索結果がここに表示される -->
                 <p class="text-gray-400 text-center py-8">検索キーワードを入力してください</p>
             </div>
         </div>
@@ -42,7 +46,6 @@
                 <span id="keep-count" class="bg-orange-500 text-white text-xs px-2 py-1 rounded-full">0</span>
             </h2>
             <div id="keep-list" class="space-y-2">
-                <!-- キープされた施設がここに表示される -->
                 <p class="text-gray-400 text-center py-8">キープされている施設はありません</p>
             </div>
             
@@ -58,118 +61,67 @@
         async function searchVenues() {
             const query = document.getElementById('search-input').value;
             if (!query) return;
-
             const resultsDiv = document.getElementById('search-results');
             resultsDiv.innerHTML = '<p class="text-center py-8">検索中...</p>';
-
             try {
                 const response = await fetch(`/search?q=${encodeURIComponent(query)}`);
                 const data = await response.json();
-                
                 document.getElementById('results-count').innerText = `${data.length} 件見つかりました`;
-                
                 if (data.length === 0) {
                     resultsDiv.innerHTML = '<p class="text-center py-8">該当する施設が見つかりませんでした</p>';
                     return;
                 }
-
                 resultsDiv.innerHTML = '';
                 data.forEach(venue => {
                     const card = document.createElement('div');
                     card.className = 'border p-3 rounded bg-white hover:bg-blue-50 transition shadow-sm relative group cursor-pointer';
                     card.onclick = () => keepVenue(venue);
-                    
-                    const content = document.createElement('div');
-                    content.innerHTML = `
+                    card.innerHTML = `
                         <div class="font-bold text-blue-800">${venue['施設名']}</div>
                         <div class="text-xs text-gray-500">${venue['郵便番号']} ${venue['都道府県名']}${venue['住所']}</div>
                         <div class="text-xs mt-1 text-gray-400 italic">${venue['屋内外']}, ${venue['適用エリア']}</div>
+                        <div class="absolute right-2 top-2 bg-orange-100 text-orange-600 px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition duration-200">＋キープ</div>
                     `;
-                    card.appendChild(content);
-
-                    const indicator = document.createElement('div');
-                    indicator.className = 'absolute right-2 top-2 bg-orange-100 text-orange-600 px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition duration-200';
-                    indicator.innerText = '＋キープ';
-                    card.appendChild(indicator);
-
                     resultsDiv.appendChild(card);
                 });
             } catch (error) {
-                console.error('Error:', error);
                 resultsDiv.innerHTML = '<p class="text-red-500 text-center py-8">エラーが発生しました</p>';
             }
         }
 
         async function keepVenue(venueData) {
-            try {
-                const response = await fetch('/keep', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: venueData})
-                });
-                const res = await response.json();
-                loadKeepList();
-            } catch (error) {
-                console.error('Error:', error);
-            }
+            await fetch('/keep', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({data: venueData})});
+            loadKeepList();
         }
 
         async function unkeepVenue(venueData) {
-            try {
-                const response = await fetch('/unkeep', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({data: venueData})
-                });
-                loadKeepList();
-            } catch (error) {
-                console.error('Error:', error);
-            }
+            await fetch('/unkeep', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({data: venueData})});
+            loadKeepList();
         }
 
         async function loadKeepList() {
-            try {
-                const response = await fetch('/get_keep_list');
-                const data = await response.json();
-                
-                const keepListDiv = document.getElementById('keep-list');
-                document.getElementById('keep-count').innerText = data.length;
-
-                if (data.length === 0) {
-                    keepListDiv.innerHTML = '<p class="text-gray-400 text-center py-8">キープされている施設はありません</p>';
-                    return;
-                }
-
-                keepListDiv.innerHTML = '';
-                data.forEach(venue => {
-                    const card = document.createElement('div');
-                    card.className = 'border p-2 rounded bg-orange-50 relative group hover:bg-orange-100 transition';
-                    
-                    const content = document.createElement('div');
-                    content.innerHTML = `
-                        <div class="text-sm font-bold pr-6">${venue['施設名']}</div>
-                        <div class="text-[10px] text-gray-500">${venue['屋内外']}, ${venue['適用エリア']}</div>
-                    `;
-                    card.appendChild(content);
-
-                    const unkeepBtn = document.createElement('button');
-                    unkeepBtn.className = 'absolute right-1 top-1 text-gray-400 hover:text-red-500 p-1';
-                    unkeepBtn.innerHTML = `
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    `;
-                    unkeepBtn.onclick = () => unkeepVenue(venue);
-                    card.appendChild(unkeepBtn);
-
-                    keepListDiv.appendChild(card);
-                });
-            } catch (error) {
-                console.error('Error:', error);
+            const response = await fetch('/get_keep_list');
+            const data = await response.json();
+            const keepListDiv = document.getElementById('keep-list');
+            document.getElementById('keep-count').innerText = data.length;
+            if (data.length === 0) {
+                keepListDiv.innerHTML = '<p class="text-gray-400 text-center py-8">キープされている施設はありません</p>';
+                return;
             }
+            keepListDiv.innerHTML = '';
+            data.forEach(venue => {
+                const card = document.createElement('div');
+                card.className = 'border p-2 rounded bg-orange-50 relative group hover:bg-orange-100 transition';
+                card.innerHTML = `
+                    <div class="text-sm font-bold pr-6">${venue['施設名']}</div>
+                    <div class="text-[10px] text-gray-500">${venue['屋内外']}, ${venue['適用エリア']}</div>
+                    <button class="absolute right-1 top-1 text-gray-400 hover:text-red-500 p-1" onclick="event.stopPropagation(); unkeepVenue(${JSON.stringify(venue).replace(/"/g, '&quot;')})">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                `;
+                keepListDiv.appendChild(card);
+            });
         }
-
-        // 初期読み込み
         loadKeepList();
     </script>
 </body>

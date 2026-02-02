@@ -32,24 +32,28 @@
 ```bash
 pip install -r rf_unyo/requirements.txt
 ```
+※ アプリケーション化のために `pywebview` を使用しています。
 
-### 2. データベースの初期化・更新
-初回起動時やデータを更新したい場合は、以下の統合更新スクリプトを実行します。
+### 5. macOSアプリケーションのビルド方法
+本システムをスタンドアロンのmacOSアプリ（.app）としてパッケージングする場合は、以下の手順を実行します。
+
+#### 事前準備: Command Line Tools のインストール
+アプリ化ツール（PyInstaller）がバイナリファイルを処理するために、macOS標準の開発者ツールが必要です。
 ```bash
-rf_unyo/.venv/bin/python rf_unyo/ch_list/data_source/update_db.py
+xcode-select --install
 ```
-このスクリプトは、`rf_unyo/ch_list/data_source/` 内にある Excel/CSV ファイルを読み込み、SQLite データベースを自動構築（または更新）します。
 
-### 3. アプリケーションの起動
+#### ビルドの実行
+以下のコマンドを実行します。
 ```bash
-rf_unyo/.venv/bin/python rf_unyo/ch_list/app.py
+rf_unyo/.venv/bin/python rf_unyo/ch_list/data_source/build_app.py
 ```
-起動後、ブラウザで [http://127.0.0.1:5001](http://127.0.0.1:5001) にアクセスしてください。
+実行後、`rf_unyo/dist/RF_Unyo_System.app` が作成されます。
 
-### 4. データの更新手順
-最新の施設データを取り込む場合は、以下の手順で行います。
-1. 新しいCSVデータや施設リストExcelを `rf_unyo/ch_list/data_source` ディレクトリに上書き保存します。
-2. 上記の `update_db.py` を再実行します。自動的にバックアップが作成され、データが更新されます。
+**WebView版の特徴**:
+- 起動すると専用のウィンドウが立ち上がります。
+- Dockにアイコンが確実に表示されます。
+- ウィンドウを閉じると、サーバーを含めアプリケーション全体が完全に終了します。
 
 ## ディレクトリ構成
 
