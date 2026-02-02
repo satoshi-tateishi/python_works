@@ -49,14 +49,33 @@
                     </div>
                 </section>
                 <div class="pt-6 border-t flex justify-between items-center">
-                    <span id="save-status" class="text-sm text-green-600 font-bold opacity-0 transition-opacity">保存しました</span>
-                    <button type="button" onclick="saveSettings()" class="bg-blue-600 text-white px-8 py-2 rounded-full hover:bg-blue-700 font-bold shadow-md transition">設定を保存</button>
+                    <div class="flex gap-4">
+                        <button type="button" onclick="exportLog()" class="bg-gray-500 text-white px-6 py-2 rounded-full hover:bg-gray-600 font-bold shadow-md transition text-sm">ログファイルをエクスポート</button>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <span id="save-status" class="text-sm text-green-600 font-bold opacity-0 transition-opacity">保存しました</span>
+                        <button type="button" onclick="saveSettings()" class="bg-blue-600 text-white px-8 py-2 rounded-full hover:bg-blue-700 font-bold shadow-md transition">設定を保存</button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
     <script>
+        async function exportLog() {
+            try {
+                const result = await window.pywebview.api.export_log();
+                if (result.status === 'success') {
+                    alert(`ログファイルをデスクトップにエクスポートしました：\n${result.filename}`);
+                } else {
+                    alert(`エクスポートに失敗しました：\n${result.message}`);
+                }
+            } catch (error) {
+                console.error('Error exporting log:', error);
+                alert('ログのエクスポート中にエラーが発生しました。');
+            }
+        }
+
         async function loadSettings() {
             const res = await fetch('/get_settings'); const data = await res.json();
             if (data.member) {

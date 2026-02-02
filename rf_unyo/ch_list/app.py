@@ -17,6 +17,29 @@ import webview
 import socket
 import time
 import base64
+import logging
+
+# --- ログ設定 (macOS標準の場所: ~/Library/Logs/RF_Unyo_System/ ) ---
+def setup_logging():
+    # ユーザーのライブラリログディレクトリ
+    log_dir = Path.home() / "Library" / "Logs" / "RF_Unyo_System"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "debug.log"
+        
+        logging.basicConfig(
+            filename=str(log_file),
+            level=logging.INFO,
+            format='%(asctime)s %(levelname)s: %(message)s',
+            encoding='utf-8'
+        )
+        logging.info("--- Application Started ---")
+        return True
+    except Exception as e:
+        print(f"Failed to setup logging: {e}")
+        return False
+
+setup_logging()
 
 # --- 保存用APIクラス ---
 class Api:
@@ -24,7 +47,6 @@ class Api:
         self.window = None
 
     def save_file(self, data_base64, default_filename):
-        """JavaScriptから渡されたBase64データをファイルとして保存する"""
         try:
             # 保存先を選択するダイアログを表示
             file_path = self.window.create_file_dialog(
@@ -41,10 +63,27 @@ class Api:
                 # Base64をデコードして保存
                 with open(file_path, 'wb') as f:
                     f.write(base64.b64decode(data_base64))
+                logging.info(f"File saved: {file_path}")
                 return True
         except Exception as e:
-            print(f"Save file error: {e}")
+            logging.error(f"Save file error: {e}")
         return False
+
+    def export_log(self):
+        """ログファイルをデスクトップにコピーする"""
+        try:
+            src = Path.home() / "Library" / "Logs" / "RF_Unyo_System" / "debug.log"
+            dst = Path.home() / "Desktop" / f"rf_unyo_debug_{datetime.now().strftime('%Y-%m%d_%H%M%S')}.log"
+            
+            if src.exists():
+                shutil.copy2(src, dst)
+                logging.info(f"Log exported to Desktop: {dst.name}")
+                return {"status": "success", "filename": dst.name}
+            else:
+                return {"status": "error", "message": "ログファイルが見つかりません。"}
+        except Exception as e:
+            logging.error(f"Log export error: {e}")
+            return {"status": "error", "message": str(e)}
 
 api = Api()
 
@@ -63,7 +102,7 @@ app = Flask(__name__,
             static_folder=str(BASE_DIR / "static"))
 app.secret_key = "rf_unyo_secret_key"
 
-# --- バージョン設定（手動で更新可能） ---
+# --- バージョン設定 ---
 APP_VERSION = "1.0.0"
 DATA_VERSION = "20250831"
 VERSION_STR = f"v{APP_VERSION}_{DATA_VERSION}"
@@ -90,6 +129,7 @@ def index():
 @app.route("/adjustment")
 def adjustment():
     try:
+        logging.info("Navigating to /adjustment")
         keep_list = session.get("keep_list", [])
         conn = get_db_connection()
         devices = conn.execute("SELECT * FROM devices").fetchall()
@@ -103,8 +143,12 @@ def adjustment():
                 except: pass
         return render_template("adjustment.html", venues=keep_list, devices=dev_list, tv_channels=ch_list)
     except Exception as e:
-        print(f"Error in /adjustment: {e}")
+        logging.error(f"Error in /adjustment: {e}")
         return str(e), 500
+
+@app.route("/settings")
+def settings():
+    return render_template("settings.html")
 
 @app.route("/search")
 def search():
@@ -116,7 +160,9 @@ def search():
         results = conn.execute(sql, (f"%{normalize_text(query)}%",)*3).fetchall()
         conn.close()
         return jsonify([dict(row) for row in results])
-    except Exception as e: return jsonify({"error": str(e)}), 500
+    except Exception as e:
+        logging.error(f"Error in /search: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/keep", methods=["POST"])
 def keep():
@@ -136,28 +182,32 @@ def unkeep():
 @app.route("/get_keep_list")
 def get_keep_list(): return jsonify(session.get("keep_list", []))
 
-@app.route("/settings")
-def settings():
-    return render_template("settings.html")
-
 @app.route("/get_settings")
 def get_settings():
-    conn = get_db_connection()
-    m = conn.execute("SELECT * FROM member_info WHERE id=1").fetchone()
-    u = conn.execute("SELECT * FROM onsite_user WHERE id=1").fetchone()
-    conn.close()
-    return jsonify({"member": dict(m) if m else {}, "user": dict(u) if u else {}})
+    try:
+        conn = get_db_connection()
+        m = conn.execute("SELECT * FROM member_info WHERE id=1").fetchone()
+        u = conn.execute("SELECT * FROM onsite_user WHERE id=1").fetchone()
+        conn.close()
+        return jsonify({"member": dict(m) if m else {}, "user": dict(u) if u else {}})
+    except Exception as e:
+        logging.error(f"Error in /get_settings: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/save_settings", methods=["POST"])
 def save_settings():
-    d = request.json; m, u = d.get("member", {}), d.get("user", {})
-    conn = get_db_connection()
-    conn.execute("UPDATE member_info SET member_num1=?, member_num2=?, member_name=?, department=?, manager=?, tel=?, email=? WHERE id=1",
-                (m.get("member_num1"), m.get("member_num2"), m.get("member_name"), m.get("department"), m.get("manager"), m.get("tel"), m.get("email")))
-    conn.execute("UPDATE onsite_user SET name=?, furigana=?, tel=?, email=? WHERE id=1",
-                (u.get("name"), u.get("furigana"), u.get("tel"), u.get("email")))
-    conn.commit(); conn.close()
-    return jsonify({"status": "success"})
+    try:
+        d = request.json; m, u = d.get("member", {}), d.get("user", {})
+        conn = get_db_connection()
+        conn.execute("UPDATE member_info SET member_num1=?, member_num2=?, member_name=?, department=?, manager=?, tel=?, email=? WHERE id=1",
+                    (m.get("member_num1"), m.get("member_num2"), m.get("member_name"), m.get("department"), m.get("manager"), m.get("tel"), m.get("email")))
+        conn.execute("UPDATE onsite_user SET name=?, furigana=?, tel=?, email=? WHERE id=1",
+                    (u.get("name"), u.get("furigana"), u.get("tel"), u.get("email")))
+        conn.commit(); conn.close()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logging.error(f"Error in /save_settings: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/export", methods=["POST"])
 def export():
@@ -189,8 +239,11 @@ def export():
         output = io.BytesIO()
         with open(temp_path, "rb") as f: output.write(f.read())
         output.seek(0); shutil.rmtree(temp_dir)
+        logging.info("Excel export completed successfully.")
         return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    except Exception as e: print(f"Export error: {e}"); return str(e), 500
+    except Exception as e:
+        logging.error(f"Export error: {e}")
+        return str(e), 500
 
 @app.route("/export_wsm", methods=["POST"])
 def export_wsm():
@@ -214,11 +267,15 @@ def export_wsm():
             writer.writerow([f"TV {ch}", 2 if is_selected else 3, 0, 0, min_f, max_f, 2 if is_selected else 4, 5])
         writer.writerow(["Blocked", 3, 0, 0, 714000, 798000, 4, 5])
         mem = io.BytesIO(); mem.write(output.getvalue().encode('utf-8')); mem.seek(0)
+        logging.info(f"WSM CSV export completed for: {venue.get('施設名')}")
         return send_file(mem, mimetype="text/csv")
-    except Exception as e: print(f"WSM Export error: {e}"); return str(e), 500
+    except Exception as e:
+        logging.error(f"WSM Export error: {e}")
+        return str(e), 500
 
 @app.route("/shutdown", methods=["POST"])
 def shutdown():
+    logging.info("Shutdown requested via API")
     def kill_server(): os.kill(os.getpid(), signal.SIGTERM)
     Timer(1.0, kill_server).start(); return jsonify({"status": "success"})
 
@@ -238,4 +295,6 @@ if __name__ == "__main__":
         window = webview.create_window("RFチャンネルリスト検索システム", "http://127.0.0.1:5001", js_api=api, width=1200, height=800)
         api.window = window
         webview.start(debug=False)
+    
+    logging.info("Application exiting.")
     os.kill(os.getpid(), signal.SIGTERM)
