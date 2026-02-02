@@ -14,6 +14,17 @@ DIST_DIR = APP_ROOT.parent / "dist"
 WORK_DIR = APP_ROOT.parent / "build"
 APP_NAME = "RFチャンネルリスト検索システム"
 
+def get_app_version():
+    """app.py から APP_VERSION を抽出する"""
+    app_py_path = APP_ROOT / "app.py"
+    if not app_py_path.exists():
+        return "1.0.0"
+    with open(app_py_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.startswith('APP_VERSION ='):
+                return line.split('=')[1].strip().strip('"').strip("'")
+    return "1.0.0"
+
 def clear_previous_builds():
     """古いビルドファイルを削除してクリーンな状態にする (macOSのリトライ対策付き) """
     for path in [DIST_DIR, WORK_DIR]:
@@ -43,12 +54,16 @@ def fix_plist_and_register():
     plist_path = app_path / "Contents" / "Info.plist"
     if not plist_path.exists(): return
 
+    version = get_app_version()
     with open(plist_path, 'rb') as f: pl = plistlib.load(f)
     pl['LSUIElement'] = False
     pl['LSBackgroundOnly'] = False
     pl['CFBundleName'] = APP_NAME
     pl['CFBundleDisplayName'] = APP_NAME
     pl['CFBundlePackageType'] = 'APPL'
+    pl['CFBundleShortVersionString'] = version
+    pl['CFBundleVersion'] = version
+    pl['NSHumanReadableCopyright'] = "Copyright © 2026 Satoshi Tateishi. All rights reserved."
     with open(plist_path, 'wb') as f: plistlib.dump(pl, f)
     
     lsregister_path = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
@@ -57,12 +72,35 @@ def fix_plist_and_register():
     else:
         subprocess.run(["touch", str(app_path)])
 
+def create_icns(png_path, icns_path):
+    """PNGからmacOS用のicnsファイルを生成する"""
+    iconset_dir = Path("tmp.iconset")
+    iconset_dir.mkdir(exist_ok=True)
+    
+    sizes = [16, 32, 128, 256, 512]
+    for size in sizes:
+        # Normal resolution
+        subprocess.run(["sips", "-z", str(size), str(size), str(png_path), "--out", str(iconset_dir / f"icon_{size}x{size}.png")], capture_output=True)
+        # High resolution (@2x)
+        subprocess.run(["sips", "-z", str(size*2), str(size*2), str(png_path), "--out", str(iconset_dir / f"icon_{size}x{size}@2x.png")], capture_output=True)
+    
+    subprocess.run(["iconutil", "-c", "icns", str(iconset_dir), "-o", str(icns_path)], capture_output=True)
+    shutil.rmtree(iconset_dir)
+
 def build():
     print("--- macOSアプリケーションビルド開始 (整理版) ---")
     clear_previous_builds()
     
     SCRIPT = str(APP_ROOT / "app.py")
     db_path = APP_ROOT / "database.db"
+    
+    # アイコン生成
+    icon_png = CURRENT_DIR / "icons" / "icon_RF.png"
+    icns_path = WORK_DIR / "icon.icns"
+    WORK_DIR.mkdir(parents=True, exist_ok=True)
+    if icon_png.exists():
+        print("🎨 アイコンを生成中...")
+        create_icns(icon_png, icns_path)
     
     sep = ':' if os.name == 'posix' else ';'
     add_data = [
@@ -85,6 +123,9 @@ def build():
         f'--specpath={WORK_DIR}', # specファイルをbuildフォルダ内に作成
         '--osx-bundle-identifier=com.rfunyo.system',
     ]
+    
+    if icns_path.exists():
+        args.append(f'--icon={icns_path}')
     
     for data in add_data: args.append(f'--add-data={data}')
     hidden_imports = ['openpyxl', 'pandas', 'sqlite3', 'webview', 'objc', 'Foundation', 'AppKit', 'WebKit']
