@@ -33,11 +33,12 @@
 pip install -r rf_unyo/requirements.txt
 ```
 
-### 2. データベースの初期化
-CSVソースからデータベースを構築します。
+### 2. データベースの初期化・更新
+初回起動時やデータを更新したい場合は、以下の統合更新スクリプトを実行します。
 ```bash
-rf_unyo/.venv/bin/python rf_unyo/ch_list/init_db.py
+rf_unyo/.venv/bin/python rf_unyo/ch_list/data_source/update_db.py
 ```
+このスクリプトは、`rf_unyo/ch_list/data_source/` 内にある Excel/CSV ファイルを読み込み、SQLite データベースを自動構築（または更新）します。
 
 ### 3. アプリケーションの起動
 ```bash
@@ -45,10 +46,17 @@ rf_unyo/.venv/bin/python rf_unyo/ch_list/app.py
 ```
 起動後、ブラウザで [http://127.0.0.1:5001](http://127.0.0.1:5001) にアクセスしてください。
 
+### 4. データの更新手順
+最新の施設データを取り込む場合は、以下の手順で行います。
+1. 新しいCSVデータや施設リストExcelを `rf_unyo/ch_list/data_source` ディレクトリに上書き保存します。
+2. 上記の `update_db.py` を再実行します。自動的にバックアップが作成され、データが更新されます。
+
 ## ディレクトリ構成
 
 - `rf_unyo/ch_list/app.py`: メインのアプリケーションロジック
-- `rf_unyo/ch_list/init_db.py`: DB初期化スクリプト
-- `rf_unyo/ch_list/masters/`: Excelテンプレート、デバイス/CH定義CSV
+- `rf_unyo/ch_list/data_source/`: データソース（CSV/Excel）およびDB更新スクリプト
+  - `update_db.py`: DB更新用スクリプト（通常はこちらを使用）
+  - `init_db.py`: 開発用DBリセットスクリプト
+- `rf_unyo/ch_list/masters/`: Excelテンプレートなど
 - `rf_unyo/ch_list/templates/`: HTMLテンプレート
 - `rf_unyo/ch_list/Requirements_definition_document.txt`: 詳細要件定義書
