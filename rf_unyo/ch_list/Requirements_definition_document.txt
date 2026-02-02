@@ -1,13 +1,13 @@
-Requirements definition document (Updated: 2026-02-01)
+Requirements definition document (Updated: 2026-02-02)
 
 1. システムの目的
-Macローカル環境で動作し、1.3万件の施設データから運用候補地を選定、ガードバンド等の専門的制約を自動計算した上で、Excelの報告書およびSennheiser WSM連携用CSVを作成する。
+macOS上でスタンドアロンアプリケーション（WebView版）として動作し、1.3万件の施設データから運用候補地を選定、ガードバンド等の専門的制約を自動計算した上で、Excelの報告書およびSennheiser WSM連携用CSVを作成する。ブラウザ不要で、直感的なデスクトップアプリとして運用可能とする。
 
 2. データベース・データ仕様 (SQLite)
 テーブル: 
 - venues: 施設情報、各CHの運用可否（○/空白）。
 - tv_channels: 日本のTVチャンネル（13-53CH）の下限・上限周波数。
-- devices: 運用機器（送信機/受信機）の対応周波数範囲とステップ。
+- devices: 運用機器（送信機/受信機）の対応周波数範囲。
 - member_info / onsite_user: 申請者・運用者情報。
 
 データ特性:
@@ -16,32 +16,33 @@ Macローカル環境で動作し、1.3万件の施設データから運用候�
 
 3. アプリケーション機能
 ① 検索・キープ機能
-- 高速検索: 施設名、住所、都道府県から部分一致検索（全角半角・大文字小文字を正規化して判定）。
-- セッション保持: 候補施設を「キープリスト」に保存。
+- 高速検索: 施設名、住所、都道府県から部分一致検索（正規化判定）。
+- キープリスト保持: 候補施設を一時保存。
+- ドラッグ＆ドロップ並べ替え: SortableJSにより、キープした施設の順序を直感的に入れ替え可能。この順序はExcel出力に反映される。
 
 ② 運用調整・チャンネル選択機能
-- 個別チャンネル選択: キープした施設ごとに使用CHを選択。
+- 個別チャンネル選択: 施設ごとに使用CHを選択。
 - ガードバンド（GB）自動判定:
-  - 「使用可能CH」と「使用不可CH」が隣接する境界において、境界線を「使用可能CH」側に1MHz移動させる。
-  - これにより、使用可能CHは1MHz狭まり（ガードバンド確保）、使用不可CHは1MHz広がる。
-  - 結果として、全チャンネルの周波数範囲が隙間なくシームレスに連結される。
-  - 例外: 13CHの下限側、および53CHの上限側にはこの境界移動（ガードバンド）を適用しない。
-- 機器適合チェック（将来機能）: 選択したCH/GB範囲が、使用デバイスの周波数帯域内か判定。
+  - 隣接CHの運用可否に基づき、境界線を「可能側」に1MHz移動。全CHが隙間なくシームレスに連結される。
+  - 13CH下限、53CH上限には適用しない。
+- 機器適合視覚化: EM 3732 L/N, SR2050 IEM 等の運用可能範囲をカラーラインで表示。全CHで垂直位置を固定し、視認性を向上。
 
-③ ファイル出力機能 (Excel)
-- テンプレート: masters/master.xlsx を使用。
-- 出力制限: 最大12施設まで（master_01, master_02, master_03 の各シートに4施設ずつ出力）。
-- 自動転記: 施設情報、申請者情報、および選択された「使用TVチャンネル」を特定セルに書き込み。
+③ ファイル保存機能（ネイティブ連動）
+- macOS標準保存ダイアログ: ブラウザのダウンロード機能に頼らず、OS標準のダイアログを表示。
+- デフォルト保存先: 「デスクトップ」を初期保存先として指定。
+- ファイル名規則: `運用連絡票_YYYY-MMDD.xlsx` または `wsm_施設名_YYYY-MMDD.csv`。
 
-④ WSM連携機能 (CSV)
-- 連携形式: Sennheiser WSM (Wireless Systems Manager) インポート用CSV。
-- 自動計算: 上記②のロジックに基づき、ガードバンドを反映したシームレスな周波数範囲（minfrequency/maxfrequency）を算出。
-- ステータス反映: 選択CHは type=2 / priority=2、未選択CHは type=3 / priority=4 として出力。
+④ バージョン管理
+- 形式: `v[App版]_[データ日付]`（例: v1.0.0_20250831）。全画面のタイトル横に常時表示。
 
 4. 技術スタック
-- Python 3.12.3 / Flask / SQLite / openpyxl
-- Tailwind CSS (UI)
+- Backend: Python 3.12.3 / Flask
+- UI/Window: pywebview (macOS WebKit)
+- Database: SQLite
+- Frontend: Tailwind CSS / SortableJS
+- Packaging: PyInstaller
 
-5. 起動方法
-rf_unyo/.venv/bin/python rf_unyo/ch_list/app.py
-http://127.0.0.1:5001
+5. 起動・構築方法
+- 開発時起動: rf_unyo/.venv/bin/python rf_unyo/ch_list/app.py
+- アプリビルド: rf_unyo/.venv/bin/python rf_unyo/ch_list/data_source/build_app.py
+- データ更新: rf_unyo/.venv/bin/python rf_unyo/ch_list/data_source/update_db.py
