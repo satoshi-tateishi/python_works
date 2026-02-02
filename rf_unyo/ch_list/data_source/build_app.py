@@ -12,7 +12,7 @@ CURRENT_DIR = Path(__file__).resolve().parent
 APP_ROOT = CURRENT_DIR.parent
 DIST_DIR = APP_ROOT.parent / "dist"
 WORK_DIR = APP_ROOT.parent / "build"
-APP_NAME = "RF_Unyo_System"
+APP_NAME = "RFチャンネルリスト検索システム"
 
 def clear_previous_builds():
     """古いビルドファイルを削除してクリーンな状態にする (macOSのリトライ対策付き) """

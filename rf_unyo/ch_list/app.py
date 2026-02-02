@@ -271,7 +271,7 @@ def export_wsm():
         conn = get_db_connection()
         tv_ch_map = {r["TVchannel"]: r for r in conn.execute("SELECT * FROM tv_channels").fetchall()}
         conn.close()
-        output = io.StringIO(); writer = csv.writer(output, lineterminator='\n')
+        output = io.StringIO(); writer = csv.writer(output, lineterminator='\n', delimiter=';')
         writer.writerow(["name", "type", "frequency", "tolerance", "minfrequency", "maxfrequency", "priority", "squelchlevel"])
         for ch in range(13, 54):
             is_available = venue.get(f"{ch}CH") == '○'; is_selected = ch in selected_channels; r = tv_ch_map.get(ch)
