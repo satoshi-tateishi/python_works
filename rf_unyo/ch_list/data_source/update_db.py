@@ -83,7 +83,7 @@ def main():
             raise FileNotFoundError(f"郵便番号CSVが見つかりません: {zip_path}")
             
         print(f"読み込み中: {ZIP_CSV}...")
-        zip_df = pd.read_csv(zip_path, header=None, dtype={{2: str}}, encoding='utf-8')
+        zip_df = pd.read_csv(zip_path, header=None, dtype={2: str}, encoding='utf-8')
         zip_df = zip_df[[2, 6, 7, 8]]
         zip_df.columns = ['zip', 'pref', 'city', 'town']
         zip_df['town'] = zip_df['town'].replace('以下に掲載がない場合', '')
