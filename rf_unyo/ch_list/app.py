@@ -12,7 +12,7 @@ import shutil
 import tempfile
 import os
 import csv
-from datetime import datetime
+from datetime import datetime, timedelta
 import webview
 import socket
 import time
@@ -21,23 +21,47 @@ import logging
 
 # --- ログ設定 (macOS標準の場所: ~/Library/Logs/RF_Unyo_System/ ) ---
 def setup_logging():
-    # ユーザーのライブラリログディレクトリ
     log_dir = Path.home() / "Library" / "Logs" / "RF_Unyo_System"
-    try:
-        log_dir.mkdir(parents=True, exist_ok=True)
-        log_file = log_dir / "debug.log"
-        
-        logging.basicConfig(
-            filename=str(log_file),
-            level=logging.INFO,
-            format='%(asctime)s %(levelname)s: %(message)s',
-            encoding='utf-8'
-        )
-        logging.info("--- Application Started ---")
-        return True
-    except Exception as e:
-        print(f"Failed to setup logging: {e}")
-        return False
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "debug.log"
+
+    # --- ログファイル内の古い行(3か月以上前)を削除する ---
+    if log_file.exists():
+        try:
+            cutoff_date = datetime.now() - timedelta(days=90)
+            cutoff_str = cutoff_date.strftime('%Y-%m-%d')
+            
+            new_lines = []
+            with open(log_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            keep_this_entry = True
+            for line in lines:
+                if len(line) >= 10 and line[0:4].isdigit() and line[4] == '-' and line[7] == '-':
+                    if line[0:10] >= cutoff_str: keep_this_entry = True
+                    else: keep_this_entry = False
+                
+                if keep_this_entry: new_lines.append(line)
+            
+            with open(log_file, 'w', encoding='utf-8') as f:
+                f.writelines(new_lines)
+        except Exception as e:
+            print(f"Failed to clean up log entries: {e}")
+
+    # ロギングの初期化
+    logging.basicConfig(
+        filename=str(log_file),
+        level=logging.INFO,
+        format='%(asctime)s %(levelname)s: %(message)s',
+        encoding='utf-8'
+    )
+    
+    # Flask(Werkzeug)のアクセスログを抑制（重要ログのみ表示）
+    werkzeug_log = logging.getLogger('werkzeug')
+    werkzeug_log.setLevel(logging.ERROR)
+    
+    logging.info("--- Application Started ---")
+    return True
 
 setup_logging()
 
@@ -48,9 +72,9 @@ class Api:
 
     def save_file(self, data_base64, default_filename):
         try:
-            # 保存先を選択するダイアログを表示
+            # 最新の書き方 (webview.FileDialog.SAVE) に修正
             file_path = self.window.create_file_dialog(
-                webview.SAVE_DIALOG, 
+                webview.FileDialog.SAVE, 
                 directory=str(Path.home() / "Desktop"), 
                 save_filename=default_filename
             )
@@ -59,8 +83,6 @@ class Api:
                 if isinstance(file_path, (list, tuple)):
                     if not file_path: return False
                     file_path = file_path[0]
-                
-                # Base64をデコードして保存
                 with open(file_path, 'wb') as f:
                     f.write(base64.b64decode(data_base64))
                 logging.info(f"File saved: {file_path}")
@@ -70,11 +92,9 @@ class Api:
         return False
 
     def export_log(self):
-        """ログファイルをデスクトップにコピーする"""
         try:
             src = Path.home() / "Library" / "Logs" / "RF_Unyo_System" / "debug.log"
-            dst = Path.home() / "Desktop" / f"rf_unyo_debug_{datetime.now().strftime('%Y-%m%d_%H%M%S')}.log"
-            
+            dst = Path.home() / "Desktop" / f"rf_unyo_debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
             if src.exists():
                 shutil.copy2(src, dst)
                 logging.info(f"Log exported to Desktop: {dst.name}")
@@ -89,8 +109,7 @@ api = Api()
 
 # --- パス解決の設定 ---
 def get_base_path():
-    if hasattr(sys, '_MEIPASS'):
-        return Path(sys._MEIPASS)
+    if hasattr(sys, '_MEIPASS'): return Path(sys._MEIPASS)
     return Path(__file__).resolve().parent
 
 BASE_DIR = get_base_path()
@@ -150,6 +169,33 @@ def adjustment():
 def settings():
     return render_template("settings.html")
 
+@app.route("/get_settings")
+def get_settings():
+    try:
+        conn = get_db_connection()
+        m = conn.execute("SELECT * FROM member_info WHERE id=1").fetchone()
+        u = conn.execute("SELECT * FROM onsite_user WHERE id=1").fetchone()
+        conn.close()
+        return jsonify({"member": dict(m) if m else {}, "user": dict(u) if u else {}})
+    except Exception as e:
+        logging.error(f"Error in /get_settings: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/save_settings", methods=["POST"])
+def save_settings():
+    try:
+        d = request.json; m, u = d.get("member", {}), d.get("user", {})
+        conn = get_db_connection()
+        conn.execute("UPDATE member_info SET member_num1=?, member_num2=?, member_name=?, department=?, manager=?, tel=?, email=? WHERE id=1",
+                    (m.get("member_num1"), m.get("member_num2"), m.get("member_name"), m.get("department"), m.get("manager"), m.get("tel"), m.get("email")))
+        conn.execute("UPDATE onsite_user SET name=?, furigana=?, tel=?, email=? WHERE id=1",
+                    (u.get("name"), u.get("furigana"), u.get("tel"), u.get("email")))
+        conn.commit(); conn.close()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        logging.error(f"Error in /save_settings: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/search")
 def search():
     try:
@@ -181,33 +227,6 @@ def unkeep():
 
 @app.route("/get_keep_list")
 def get_keep_list(): return jsonify(session.get("keep_list", []))
-
-@app.route("/get_settings")
-def get_settings():
-    try:
-        conn = get_db_connection()
-        m = conn.execute("SELECT * FROM member_info WHERE id=1").fetchone()
-        u = conn.execute("SELECT * FROM onsite_user WHERE id=1").fetchone()
-        conn.close()
-        return jsonify({"member": dict(m) if m else {}, "user": dict(u) if u else {}})
-    except Exception as e:
-        logging.error(f"Error in /get_settings: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/save_settings", methods=["POST"])
-def save_settings():
-    try:
-        d = request.json; m, u = d.get("member", {}), d.get("user", {})
-        conn = get_db_connection()
-        conn.execute("UPDATE member_info SET member_num1=?, member_num2=?, member_name=?, department=?, manager=?, tel=?, email=? WHERE id=1",
-                    (m.get("member_num1"), m.get("member_num2"), m.get("member_name"), m.get("department"), m.get("manager"), m.get("tel"), m.get("email")))
-        conn.execute("UPDATE onsite_user SET name=?, furigana=?, tel=?, email=? WHERE id=1",
-                    (u.get("name"), u.get("furigana"), u.get("tel"), u.get("email")))
-        conn.commit(); conn.close()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        logging.error(f"Error in /save_settings: {e}")
-        return jsonify({"error": str(e)}), 500
 
 @app.route("/export", methods=["POST"])
 def export():
@@ -275,7 +294,6 @@ def export_wsm():
 
 @app.route("/shutdown", methods=["POST"])
 def shutdown():
-    logging.info("Shutdown requested via API")
     def kill_server(): os.kill(os.getpid(), signal.SIGTERM)
     Timer(1.0, kill_server).start(); return jsonify({"status": "success"})
 
@@ -295,6 +313,4 @@ if __name__ == "__main__":
         window = webview.create_window("RFチャンネルリスト検索システム", "http://127.0.0.1:5001", js_api=api, width=1200, height=800)
         api.window = window
         webview.start(debug=False)
-    
-    logging.info("Application exiting.")
     os.kill(os.getpid(), signal.SIGTERM)
