@@ -21,3 +21,6 @@ dist/
 
 # サンプルデータ
 sample_file/
+
+# ルートの config.json 除外ルールを上書き（このプロジェクトは追跡対象）
+!config.json

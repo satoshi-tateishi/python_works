@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "app_name": "MSC Decoder",
+  "bundle_id": "com.msc.decoder",
+  "port": 8765,
+  "window_width": 520,
+  "window_height": null,
+  "max_upload_mb": 50
+}

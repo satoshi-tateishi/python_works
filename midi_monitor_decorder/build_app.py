@@ -4,6 +4,7 @@ MSC Decoder macOS アプリビルドスクリプト
 Usage: .venv/bin/python build_app.py
 """
 
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -17,19 +18,16 @@ import PyInstaller.__main__
 CURRENT_DIR = Path(__file__).resolve().parent
 DIST_DIR = CURRENT_DIR / "dist"
 WORK_DIR = CURRENT_DIR / "build"
-APP_NAME = "MSC Decoder"
-BUNDLE_ID = "com.msc.decoder"
+
+with open(CURRENT_DIR / "config.json", encoding="utf-8") as _f:
+    _config = json.load(_f)
+
+APP_NAME = _config["app_name"]
+BUNDLE_ID = _config["bundle_id"]
 
 
 def get_app_version():
-    app_py = CURRENT_DIR / "app.py"
-    if not app_py.exists():
-        return "1.0.0"
-    with open(app_py, encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("APP_VERSION"):
-                return line.split("=")[1].strip().strip('"').strip("'")
-    return "1.0.0"
+    return _config["version"]
 
 
 def run_ruff():
@@ -108,6 +106,7 @@ def build():
         f"--specpath={WORK_DIR}",
         f"--osx-bundle-identifier={BUNDLE_ID}",
         f"--add-data={CURRENT_DIR / 'decoder.py'}{sep}.",
+        f"--add-data={CURRENT_DIR / 'config.json'}{sep}.",
         "--hidden-import=flask",
         "--hidden-import=werkzeug",
         "--hidden-import=webview",

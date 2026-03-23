@@ -94,7 +94,7 @@ def _parse_go_data(data_bytes):
     segments = [s for s in segments if s]
 
     if not segments:
-        return "", ""
+        return None  # セグメントが空の場合は不正データとして扱う
 
     decoded_parts = []
     for seg in segments:
@@ -141,7 +141,7 @@ def _parse_message(msg, resolve):
             return None  # 不正データ
         cue, page = result
 
-    # 時刻変換
+    # 時刻変換（ローカルタイムゾーン基準。.mmon 作成環境と異なる場合は時刻がずれる）
     unix_ts = clock_ts + MAC_EPOCH_OFFSET
     dt = datetime.datetime.fromtimestamp(unix_ts)
     timestamp = dt.strftime("%H時%M分%S秒")
@@ -164,15 +164,8 @@ def _parse_message(msg, resolve):
     }
 
 
-def decode_mmon_bytes(raw_bytes):
-    """
-    .mmon ファイルのバイナリデータからMSCイベントのrowリストを返す。
-    app.py から利用する。
-    """
-    inner = _load_inner_plist(raw_bytes=raw_bytes)
-    resolve, objects = _resolve_objects(inner)
-
-    root_array = resolve(inner["$top"]["root"])
+def _collect_rows(root_array, resolve):
+    """NSKeyedArchive の root 配列から MSC row リストを返す"""
     rows = []
     for uid in root_array["NS.objects"]:
         msg = resolve(uid)
@@ -182,18 +175,21 @@ def decode_mmon_bytes(raw_bytes):
     return rows
 
 
+def decode_mmon_bytes(raw_bytes):
+    """
+    .mmon ファイルのバイナリデータからMSCイベントのrowリストを返す。
+    app.py から利用する。
+    """
+    inner = _load_inner_plist(raw_bytes=raw_bytes)
+    resolve, objects = _resolve_objects(inner)
+    return _collect_rows(resolve(inner["$top"]["root"]), resolve)
+
+
 def _process_to_csv(mmon_path, csv_path):
     """CLIからCSVを出力する"""
     inner = _load_inner_plist(mmon_path=mmon_path)
     resolve, objects = _resolve_objects(inner)
-
-    root_array = resolve(inner["$top"]["root"])
-    rows = []
-    for uid in root_array["NS.objects"]:
-        msg = resolve(uid)
-        row = _parse_message(msg, resolve)
-        if row is not None:
-            rows.append(row)
+    rows = _collect_rows(resolve(inner["$top"]["root"]), resolve)
 
     fieldnames = [
         "タイムスタンプ",

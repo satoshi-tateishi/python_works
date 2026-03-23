@@ -8,6 +8,7 @@ import json
 import os
 import signal
 import socket
+import sys
 from threading import Thread
 import time
 
@@ -16,7 +17,20 @@ import webview
 
 from decoder import decode_mmon_bytes
 
-PORT = 8765
+
+def _load_config():
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(base, "config.json"), encoding="utf-8") as f:
+        return json.load(f)
+
+
+_config = _load_config()
+_PORT = _config["port"]
+_APP_VERSION = _config["version"]
+_APP_NAME = _config["app_name"]
+_WINDOW_WIDTH = _config["window_width"]
+_WINDOW_HEIGHT = _config["window_height"] or webview.screens[0].height
+_MAX_UPLOAD_MB = _config["max_upload_mb"]
 
 HTML = """<!DOCTYPE html>
 <html lang="ja">
@@ -212,9 +226,10 @@ function esc(s) {
 </script>
 </body>
 </html>
-"""
+""".replace("MSC Decoder", _APP_NAME)
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
 
 
 @app.route("/")
@@ -229,18 +244,19 @@ def decode():
         rows = decode_mmon_bytes(raw)
         return Response(json.dumps({"rows": rows}, ensure_ascii=False), mimetype="application/json")
     except Exception as e:
+        print(f"Decode error: {e}", flush=True)
         body = json.dumps({"error": str(e)}, ensure_ascii=False)
         return Response(body, mimetype="application/json", status=500)
 
 
 def _run_flask():
-    app.run(host="127.0.0.1", port=PORT, debug=False, use_reloader=False)
+    app.run(host="127.0.0.1", port=_PORT, debug=False, use_reloader=False)
 
 
 def _wait_for_server():
     for _ in range(50):
         try:
-            with socket.create_connection(("127.0.0.1", PORT), timeout=1):
+            with socket.create_connection(("127.0.0.1", _PORT), timeout=1):
                 return True
         except OSError:
             time.sleep(0.1)
@@ -253,10 +269,10 @@ if __name__ == "__main__":
     t.start()
     if _wait_for_server():
         webview.create_window(
-            "MSC Decoder",
-            f"http://127.0.0.1:{PORT}",
-            width=520,
-            height=800,
+            _APP_NAME,
+            f"http://127.0.0.1:{_PORT}",
+            width=_WINDOW_WIDTH,
+            height=_WINDOW_HEIGHT,
         )
         webview.start(debug=False)
     os.kill(os.getpid(), signal.SIGTERM)
