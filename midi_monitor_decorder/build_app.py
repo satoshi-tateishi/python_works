@@ -100,7 +100,7 @@ def build():
         "--noconfirm",
         "--windowed",
         "--clean",
-        "--target-arch=arm64",
+        "--target-arch=universal2",
         f"--distpath={DIST_DIR}",
         f"--workpath={WORK_DIR}",
         f"--specpath={WORK_DIR}",
