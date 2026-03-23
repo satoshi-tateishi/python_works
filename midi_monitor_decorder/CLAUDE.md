@@ -10,6 +10,7 @@ Flask + pywebview + PyInstaller による macOS .app。
 - `decoder.py` — .mmon パース・MSCデコードのコアロジック。CLI としても動作。
 - `app.py` — Flask サーバー（スレッド）+ pywebview ネイティブウィンドウ。
 - `build_app.py` — PyInstaller で `dist/MSC Decoder.app` を生成。
+- `config.json` — バージョン・ポート・ウィンドウサイズ等の設定を一元管理。`app.py` と `build_app.py` の両方から参照する。PyInstaller バンドルにも同梱される。
 
 ## 開発コマンド
 
@@ -62,5 +63,8 @@ bash setup.sh
 
 ## PyInstaller ビルド時の注意
 
-- `decoder.py` を `--add-data` で同梱すること
+- `decoder.py` と `config.json` を `--add-data` で同梱すること
 - hidden imports: `flask`, `werkzeug`, `webview`, `objc`, `Foundation`, `AppKit`, `WebKit`
+- universal2（Intel + Apple Silicon 両対応）ビルドには python.org 版 Python 3.13 が必要
+  - `setup.sh` が自動検出して universal2 環境を構築する
+  - `markupsafe` は arm64 専用 wheel が配布されているため、ソースから `ARCHFLAGS="-arch x86_64 -arch arm64"` 付きでビルドすること（`setup.sh` で自動対応済み）
