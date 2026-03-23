@@ -1,9 +1,11 @@
 {
   "version": "1.0.0",
-  "app_name": "MSC Decoder",
+  "app_name": "MIDI Monitor to MSC Decoder",
   "bundle_id": "com.msc.decoder",
   "port": 8765,
   "window_width": 520,
   "window_height": null,
+  "window_x": 0,
+  "window_y": null,
   "max_upload_mb": 50
 }

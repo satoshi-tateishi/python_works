@@ -76,10 +76,18 @@ def _decode_ascii_field(raw_bytes):
 def _parse_go_data(data_bytes):
     """
     GOコマンドのdataバイト列を解析して (cue, page) を返す。
-    不正な場合は None を返す。
+
+    MSC 1.1 仕様に準拠したフィールド構造:
+      フィールド0: Q_number（Cue No.）  ※オプション
+      フィールド1: Q_list（ページ/エグゼキュータ番号）  ※オプション
+      フィールド2: Q_path（キューパス）  ※無視
+
+    Q_number を省略したベアGO（F0 7F .. 02 .. 01 F7）も有効で ("", "") を返す。
+    フィールドに不正なバイトが含まれる場合のみ None を返す。
     """
     go_data = data_bytes[5:]
 
+    # 0x00 でフィールドを分割（空フィールドも位置を保持するためフィルタしない）
     segments = []
     current = []
     for b in go_data:
@@ -91,20 +99,23 @@ def _parse_go_data(data_bytes):
     if current:
         segments.append(bytes(current))
 
-    segments = [s for s in segments if s]
+    # Q_number (segments[0]) と Q_list (segments[1]) を取り出す
+    # 空フィールドは "" として扱う（ベアGOや省略フィールドを許容）
+    cue = ""
+    page = ""
 
-    if not segments:
-        return None  # セグメントが空の場合は不正データとして扱う
-
-    decoded_parts = []
-    for seg in segments:
-        val = _decode_ascii_field(seg)
+    if len(segments) >= 1 and segments[0]:
+        val = _decode_ascii_field(segments[0])
         if val is None:
-            return None  # 不正データ
-        decoded_parts.append(val)
+            return None  # 不正バイト
+        cue = val
 
-    cue = decoded_parts[0] if len(decoded_parts) >= 1 else ""
-    page = decoded_parts[1] if len(decoded_parts) >= 2 else ""
+    if len(segments) >= 2 and segments[1]:
+        val = _decode_ascii_field(segments[1])
+        if val is None:
+            return None  # 不正バイト
+        page = val
+
     return cue, page
 
 
@@ -168,8 +179,11 @@ def _collect_rows(root_array, resolve):
     """NSKeyedArchive の root 配列から MSC row リストを返す"""
     rows = []
     for uid in root_array["NS.objects"]:
-        msg = resolve(uid)
-        row = _parse_message(msg, resolve)
+        try:
+            msg = resolve(uid)
+            row = _parse_message(msg, resolve)
+        except (IndexError, KeyError, TypeError):
+            continue  # 壊れたエントリはスキップ
         if row is not None:
             rows.append(row)
     return rows

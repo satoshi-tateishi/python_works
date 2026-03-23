@@ -46,6 +46,22 @@ bash setup.sh
 - SysEx データ（`data` フィールド）は F0/F7 を除いたボディのみ格納
 - MSC 判定: `statusByte == 0xF0` かつ `data[0]==0x7F` かつ `data[2]==0x02`
 
+## MSC 1.1 GO コマンドのデータ構造
+
+```
+F0 7F <device_ID> 02 <command_format> 01 <Q_number> 00 <Q_list> 00 <Q_path> F7
+```
+
+| MSC 1.1 正式名 | row dict キー | 説明 |
+|---|---|---|
+| Q_number | `"cue"` | キュー番号（オプション、省略時は次のキューをGO） |
+| Q_list | `"page"` | キューリスト番号（照明ではエグゼキュータ/ページに相当） |
+| Q_path | *(無視)* | キューパス（ファイルパス相当、表示不要） |
+
+- Q_number を省略したベアGO（`F0 7F .. 02 .. 01 F7`）は MSC 1.1 の有効コマンド
+  → `cue=""`, `page=""` として記録される
+- フィールドは `0x00` で区切られ、位置が意味を持つ（空フィールドも位置を保持）
+
 ## row dict の構造
 
 ```python
@@ -55,8 +71,8 @@ bash setup.sh
     "datetime_iso": "2026-03-23T21:52:11",
     "msc": "MSC",
     "command": "GO",
-    "page": "1",                       # GO のみ、なければ ""
-    "cue": "0.7",                      # GO のみ、なければ ""
+    "page": "1",                       # GO のみ、Q_list に対応。なければ ""
+    "cue": "0.7",                      # GO のみ、Q_number に対応。なければ ""
     "raw_hex": "F0 7F 01 02 7F 01 ...",
 }
 ```

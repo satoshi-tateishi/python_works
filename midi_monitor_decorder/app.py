@@ -30,6 +30,8 @@ _APP_VERSION = _config["version"]
 _APP_NAME = _config["app_name"]
 _WINDOW_WIDTH = _config["window_width"]
 _WINDOW_HEIGHT = _config["window_height"] or webview.screens[0].height
+_WINDOW_X = _config.get("window_x")
+_WINDOW_Y = _config.get("window_y")
 _MAX_UPLOAD_MB = _config["max_upload_mb"]
 
 HTML = """<!DOCTYPE html>
@@ -119,6 +121,18 @@ HTML = """<!DOCTYPE html>
   td.cue { font-family: "SF Mono", "Menlo", monospace; color: #ffd580; }
   td.page { color: #b0b0d0; }
   td.ts { font-family: "SF Mono", "Menlo", monospace; color: #c0d8f0; }
+  #cue-search {
+    width: 100%;
+    padding: 7px 12px;
+    border-radius: 8px;
+    border: 1px solid #4a6fa5;
+    background: #16213e;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+    outline: none;
+  }
+  #cue-search:focus { border-color: #a0c4ff; }
+  tr.highlight td { background: #2a3f6f; }
 </style>
 </head>
 <body>
@@ -129,6 +143,9 @@ HTML = """<!DOCTYPE html>
 <div id="filename"></div>
 <div id="count"></div>
 <div id="error"></div>
+<div id="search-wrap" style="display:none; margin-bottom:12px;">
+  <input id="cue-search" type="text" placeholder="Cue No. を検索..." autocomplete="off">
+</div>
 <div class="table-wrap">
   <table id="result-table" style="display:none">
     <thead>
@@ -151,6 +168,17 @@ const countEl = document.getElementById('count');
 const errorEl = document.getElementById('error');
 const table = document.getElementById('result-table');
 const tbody = document.getElementById('tbody');
+const cueSearch = document.getElementById('cue-search');
+const searchWrap = document.getElementById('search-wrap');
+
+cueSearch.addEventListener('input', () => {
+  const q = cueSearch.value.trim();
+  for (const tr of tbody.querySelectorAll('tr')) {
+    const cueCell = tr.querySelector('td.cue');
+    const match = q !== '' && cueCell && cueCell.textContent.includes(q);
+    tr.classList.toggle('highlight', match);
+  }
+});
 
 dropzone.addEventListener('dragover', e => {
   e.preventDefault();
@@ -177,6 +205,8 @@ function loadFile(file) {
   errorEl.textContent = '';
   countEl.textContent = '解析中...';
   table.style.display = 'none';
+  searchWrap.style.display = 'none';
+  cueSearch.value = '';
 
   const reader = new FileReader();
   reader.onload = async e => {
@@ -217,7 +247,9 @@ function renderTable(rows) {
     `;
     tbody.appendChild(tr);
   }
-  table.style.display = rows.length > 0 ? 'table' : 'none';
+  const visible = rows.length > 0;
+  table.style.display = visible ? 'table' : 'none';
+  searchWrap.style.display = visible ? '' : 'none';
 }
 
 function esc(s) {
@@ -268,11 +300,11 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
     if _wait_for_server():
-        webview.create_window(
-            _APP_NAME,
-            f"http://127.0.0.1:{_PORT}",
-            width=_WINDOW_WIDTH,
-            height=_WINDOW_HEIGHT,
-        )
+        kwargs = {"width": _WINDOW_WIDTH, "height": _WINDOW_HEIGHT}
+        if _WINDOW_X is not None:
+            kwargs["x"] = _WINDOW_X
+            screen_h = webview.screens[0].height
+            kwargs["y"] = _WINDOW_Y if _WINDOW_Y is not None else (screen_h - _WINDOW_HEIGHT) // 2
+        webview.create_window(_APP_NAME, f"http://127.0.0.1:{_PORT}", **kwargs)
         webview.start(debug=False)
     os.kill(os.getpid(), signal.SIGTERM)
