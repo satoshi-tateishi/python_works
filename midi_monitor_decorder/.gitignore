@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# venv
+.venv/
+
+# PyInstaller
+build/
+dist/
+
+# Ruff
+.ruff_cache/
+
+# macOS
+.DS_Store
+
+# 出力ファイル
+*.csv
+
+# サンプルデータ
+sample_file/
