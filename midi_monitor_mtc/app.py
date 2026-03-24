@@ -6,7 +6,6 @@ HTML/JS UI はこのファイルに埋め込み文字列として定義する。
 
 import csv
 import datetime
-import io
 import json
 import os
 import sys
@@ -200,45 +199,38 @@ def api_clear():
     return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
 
 
-@app.route("/api/export")
+@app.route("/api/export", methods=["POST"])
 def api_export():
-    """ログバッファを CSV としてダウンロードさせる。"""
+    """ログバッファを ~/Downloads/ に CSV として保存する。"""
     with _log_lock:
         rows = list(_log_buffer)
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    headers = [
-        "Timestamp",
-        "Port",
-        "Device ID",
-        "Format",
-        "Command",
-        "Q_number",
-        "Q_list",
-        "Raw Hex",
-    ]
-    writer.writerow(headers)
-    for r in rows:
-        writer.writerow(
-            [
-                r.get("timestamp", ""),
-                r.get("port", ""),
-                r.get("device_id", ""),
-                r.get("cmd_format", ""),
-                r.get("command", ""),
-                r.get("q_number", ""),
-                r.get("q_list", ""),
-                r.get("raw_hex", ""),
-            ]
-        )
-
     filename = datetime.datetime.now().strftime("msc_log_%Y%m%d_%H%M%S.csv")
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    downloads_dir = os.path.expanduser("~/Downloads")
+    os.makedirs(downloads_dir, exist_ok=True)
+    filepath = os.path.join(downloads_dir, filename)
+
+    with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            ["Timestamp", "Port", "Device ID", "Format", "Command", "Q_number", "Q_list", "Raw Hex"]
+        )
+        for r in rows:
+            writer.writerow(
+                [
+                    r.get("timestamp", ""),
+                    r.get("port", ""),
+                    r.get("device_id", ""),
+                    r.get("cmd_format", ""),
+                    r.get("command", ""),
+                    r.get("q_number", ""),
+                    r.get("q_list", ""),
+                    r.get("raw_hex", ""),
+                ]
+            )
+
+    body = json.dumps({"ok": True, "filename": filename}).encode("ascii")
+    return Response(body, content_type="application/json")
 
 
 # ---------------------------------------------------------------------------
@@ -770,7 +762,7 @@ function updateCount() {
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
   const btn = document.getElementById('btn-autoscroll');
-  btn.textContent = '自動スクロール: ' + (autoScroll ? 'ON' : 'OFF');
+  btn.textContent = '\u81ea\u52d5\u30b9\u30af\u30ed\u30fc\u30eb: ' + (autoScroll ? 'ON' : 'OFF');
   btn.className = 'btn autoscroll-btn' + (autoScroll ? ' active' : '');
 }
 
@@ -793,20 +785,17 @@ async function clearLog() {
 }
 
 async function exportCsv() {
+  const btn = document.getElementById('btn-export');
+  const origHtml = btn.innerHTML;
   try {
-    const res = await fetch('/api/export');
-    const blob = await res.blob();
-    const disposition = res.headers.get('Content-Disposition') || '';
-    const match = disposition.match(/filename=([^;]+)/);
-    const filename = match ? match[1] : 'msc_log.csv';
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    const res = await fetch('/api/export', { method: 'POST' });
+    const { filename } = await res.json();
+    // ✓ + ファイル名を表示（3秒後に元に戻す）
+    btn.innerHTML = '&#10003; ' + filename;
+    setTimeout(() => { btn.innerHTML = origHtml; }, 3000);
   } catch (e) {
-    console.error('CSV エクスポートエラー', e);
+    btn.innerHTML = '&#10007; error';
+    setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
   }
 }
 
