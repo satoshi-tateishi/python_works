@@ -80,6 +80,7 @@ def fix_plist():
     pl["CFBundlePackageType"] = "APPL"
     pl["CFBundleShortVersionString"] = version
     pl["CFBundleVersion"] = version
+    pl["NSHumanReadableCopyright"] = f"Developer: Satoshi Tateishi"
 
     with open(plist_path, "wb") as f:
         plistlib.dump(pl, f)
