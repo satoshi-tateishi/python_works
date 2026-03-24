@@ -81,7 +81,7 @@ bash setup.sh
 ## ファイル構成
 
 ```
-midi_monitor_mtc/
+msc_mtc_viewer/
 ├── app.py            # Flask サーバー + pywebview ウィンドウ + HTML/JS UI（埋め込み）
 ├── decoder.py        # MSC バイト列デコード（純粋関数、rtmidi 依存なし）
 ├── midi_receiver.py  # python-rtmidi ポート管理 + スレッドセーフ Queue
