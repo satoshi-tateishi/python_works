@@ -33,6 +33,7 @@ def _load_config() -> dict:
 
 _config = _load_config()
 APP_NAME = _config["app_name"]
+FLASK_PORT = _config.get("port", 0)
 WINDOW_WIDTH = _config.get("window_width", 1100)
 WINDOW_HEIGHT = _config.get("window_height")
 WINDOW_MAXIMIZE = _config.get("window_maximize", False)
@@ -247,7 +248,7 @@ _PORT = None
 
 def _start_flask():
     global _server, _PORT
-    _server = make_server("127.0.0.1", 0, app, threaded=True)
+    _server = make_server("127.0.0.1", FLASK_PORT, app, threaded=True)
     _PORT = _server.socket.getsockname()[1]
     print(f"Flask server: http://127.0.0.1:{_PORT}/", flush=True)
     _server.serve_forever()
