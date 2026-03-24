@@ -868,7 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadPorts();
   startSSE();
   updateClock();
-  setInterval(updateClock, 1000);
+  setTimeout(() => { updateClock(); setInterval(updateClock, 1000); }, 1000 - new Date().getMilliseconds());
 });
 </script>
 </body>
