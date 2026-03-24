@@ -792,8 +792,22 @@ async function clearLog() {
   document.getElementById('last-msc').classList.remove('flash');
 }
 
-function exportCsv() {
-  window.location.href = '/api/export';
+async function exportCsv() {
+  try {
+    const res = await fetch('/api/export');
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename=([^;]+)/);
+    const filename = match ? match[1] : 'msc_log.csv';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('CSV エクスポートエラー', e);
+  }
 }
 
 // ---- 初期化 ----
