@@ -350,6 +350,7 @@ HTML_UI = """<!DOCTYPE html>
     display: flex;
     flex-direction: column;
     border-left: 1px solid var(--border);
+    overflow: hidden;
   }
   .header-left {
     flex: 1;
@@ -566,7 +567,7 @@ HTML_UI = """<!DOCTYPE html>
   .raw-hex-hidden .th-raw { width: 0 !important; padding: 0; overflow: hidden; }
   .raw-hex-hidden .td-raw { padding: 0; overflow: hidden; }
   .raw-hex-hidden .left-panel  { flex: 0 0 730px; min-width: 0; }
-  .raw-hex-hidden .right-panel { flex: 1; width: auto; }
+  .raw-hex-hidden .right-panel { flex: 1; width: auto; min-width: 420px; }
   .raw-hex-hidden .mtc-tc { font-size: 64px; }
   .raw-hex-hidden .lm-qnumber { font-size: 96px; }
   .empty-msg {
