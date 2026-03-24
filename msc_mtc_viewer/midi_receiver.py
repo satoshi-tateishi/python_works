@@ -71,7 +71,9 @@ def connect_port(port_name: str) -> bool:
 
     index = ports.index(port_name)
     midi_in.open_port(index)
-    # SysEx を受信可能にする（タイミング・アクティブセンスは無視）
+    # SysEx(F0) と MTC Quarter Frame(F1) を受信可能にする。
+    # timing=False: RtMidi は 0xF1(MTC QF) も timing フラグで制御するため False が必須。
+    # active_sense=True: Active Sensing(FE) は無視。
     midi_in.ignore_types(sysex=False, timing=False, active_sense=True)
     midi_in.set_callback(_make_callback(port_name))
     _inputs[port_name] = midi_in

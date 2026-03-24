@@ -131,9 +131,9 @@ def api_events():
                     with _mtc_lock:
                         _qf_nibbles[nibble_type] = nibble_val
                         if all(n is not None for n in _qf_nibbles):
-                            frames = (_qf_nibbles[1] << 4) | _qf_nibbles[0]
-                            seconds = (_qf_nibbles[3] << 4) | _qf_nibbles[2]
-                            minutes = (_qf_nibbles[5] << 4) | _qf_nibbles[4]
+                            frames = ((_qf_nibbles[1] & 0x01) << 4) | _qf_nibbles[0]
+                            seconds = ((_qf_nibbles[3] & 0x03) << 4) | _qf_nibbles[2]
+                            minutes = ((_qf_nibbles[5] & 0x03) << 4) | _qf_nibbles[4]
                             hours = ((_qf_nibbles[7] & 0x01) << 4) | _qf_nibbles[6]
                             fps_code = (_qf_nibbles[7] >> 1) & 0x03
                             mtc_event = {
@@ -488,7 +488,7 @@ HTML_UI = """<!DOCTYPE html>
   .port-item.connected { color: var(--go); }
   .port-item input[type=checkbox] { cursor: pointer; accent-color: var(--go); }
   .port-item label { cursor: pointer; font-size: 12px; }
-  btn, .btn {
+  .btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -693,7 +693,6 @@ HTML_UI = """<!DOCTYPE html>
 <script>
 const MAX_ROWS = 500;
 let autoScroll = true;
-let rowCount = 0;
 
 // ---- 設定ロード ----
 async function loadSettings() {
@@ -910,7 +909,6 @@ function appendRow(row) {
     '<td></td>';
 
   tbody.appendChild(tr);
-  rowCount++;
 
   // 最大行数を超えたら先頭を削除
   if (tbody.rows.length > MAX_ROWS) {
@@ -972,7 +970,6 @@ async function clearLog() {
   } catch (e) { /* ignore */ }
   document.getElementById('msg-tbody').innerHTML = '';
   document.getElementById('empty-msg').style.display = '';
-  rowCount = 0;
   updateCount();
   // 大型表示もリセット
   document.getElementById('lm-devid').textContent  = '';
@@ -1026,7 +1023,8 @@ if __name__ == "__main__":
     t.start()
 
     # ポートが確定するまで待つ（make_server はスレッド内でバインドするため）
-    _port_ready.wait(timeout=10.0)
+    if not _port_ready.wait(timeout=10.0):
+        raise RuntimeError("Flask サーバーが起動しませんでした")
 
     _wait_for_server()
 

@@ -1,8 +1,8 @@
-# CLAUDE.md — MIDI MSC Monitor
+# CLAUDE.md — MSC_MTC_Viewer
 
 ## プロジェクト概要
 
-USB-MIDI I/F や IAC から受信した MIDI Show Control (MSC) メッセージをリアルタイムで解析・表示する現場モニターツール。
+USB-MIDI I/F や IAC から受信した MIDI Show Control (MSC) / MTC メッセージをリアルタイムで解析・表示する現場モニターツール。
 Flask + pywebview + PyInstaller による macOS .app。
 
 - **参考アプリ**: `midi_monitor_decorder`（.mmon ファイルの解析ツール）と同じアーキテクチャパターン
@@ -12,8 +12,9 @@ Flask + pywebview + PyInstaller による macOS .app。
 
 - `decoder.py` — MSC バイト列デコードの純粋関数モジュール。rtmidi 依存なし。
 - `midi_receiver.py` — python-rtmidi によるライブ MIDI ポート管理 + スレッドセーフ Queue。
+- `persistence.py` — 接続履歴・UI 設定を `settings.json` に保存・ロード。read-then-merge パターン。
 - `app.py` — Flask サーバー（スレッド）+ pywebview ネイティブウィンドウ。HTML/JS UI 埋め込み。
-- `build_app.py` — PyInstaller で `dist/MIDI MSC Monitor.app` を生成。
+- `build_app.py` — PyInstaller で `dist/MSC_MTC_Viewer.app` を生成。
 - `config.json` — バージョン・ウィンドウサイズ等の設定を一元管理。`app.py` と `build_app.py` の両方から参照する。PyInstaller バンドルにも同梱される。
 
 ## 開発コマンド
@@ -26,8 +27,8 @@ bash setup.sh
 .venv/bin/python app.py
 
 # lint / format
-.venv/bin/ruff check decoder.py midi_receiver.py app.py
-.venv/bin/ruff format decoder.py midi_receiver.py app.py
+.venv/bin/ruff check decoder.py midi_receiver.py persistence.py app.py
+.venv/bin/ruff format decoder.py midi_receiver.py persistence.py app.py
 
 # .app ビルド（Ruff チェックを含む）
 .venv/bin/python build_app.py
@@ -54,6 +55,25 @@ MidiIn callback (port A/B)        drain_queue() ループ        webview.start()
 - `queue.Queue` は rtmidi の C スレッドから安全に `put_nowait()` できる
 - `_log_buffer` の読み書きは `threading.Lock` で保護
 - Flask ポートは `make_server('127.0.0.1', 0, app, threaded=True)` で動的割り当て（`threaded=True` 必須: SSE が単一スレッドを占有するため）
+- ポート確定待ちは `threading.Event`（`_port_ready.wait(timeout=10.0)`）で実装
+
+## python-rtmidi の ignore_types 設定
+
+`connect_port()` 内で以下のように設定している:
+
+```python
+midi_in.ignore_types(sysex=False, timing=False, active_sense=True)
+```
+
+| 引数 | 値 | 意味 |
+|------|----|------|
+| `sysex` | `False` | SysEx (0xF0) を**受信**する |
+| `timing` | `False` | MTC Quarter Frame (0xF1) を**受信**する |
+| `active_sense` | `True` | Active Sensing (0xFE) を**無視**する |
+
+**重要:** RtMidi の CoreMIDI バックエンドでは `timing` フラグが MIDI Clock (0xF8) だけでなく
+**MTC Quarter Frame (0xF1) も制御**する。`timing=True` にすると MTC QF が受信できなくなるため、
+`timing=False` は MIDI Clock を受け取るためではなく **MTC QF を受信するために必須**の設定。
 
 ## python-rtmidi ポート名の文字化け対策
 
@@ -171,7 +191,24 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 | POST | `/api/ports/disconnect` | ポート切断 `{"port": "..."}` |
 | GET | `/api/events` | SSE（リアルタイム MSC 配信、20ms ポーリング） |
 | POST | `/api/clear` | ログバッファクリア（Queue も空にする） |
-| GET | `/api/export` | CSV ダウンロード（`msc_log_YYYYMMDD_HHMMSS.csv`） |
+| POST | `/api/export` | CSV ダウンロード（`msc_log_YYYYMMDD_HHMMSS.csv`） |
+| GET | `/api/settings` | UI 設定取得（`raw_hex_visible` 等） |
+| POST | `/api/settings/raw_hex_visible` | Raw Hex 列表示状態を保存 `{"visible": bool}` |
+
+## settings.json 永続化（persistence.py）
+
+保存先: `config.json` の `settings_dir`（デフォルト: `~/Documents/MSC_MTC_Viewer/settings.json`）
+
+**read-then-merge パターン**: 保存時は既存 JSON を読み込んでからキーを上書きして書き直す。
+個別キーの保存が他のキーを破壊しない。
+
+```python
+persistence.init(settings_dir)          # app.py 起動時に設定ディレクトリを初期化
+persistence.load_saved_ports()          # 保存済みポート名リスト → list[str]
+persistence.save_connected_ports(ports) # 接続中ポートを保存
+persistence.load_raw_hex_visible()      # Raw Hex 表示状態 → bool（デフォルト True）
+persistence.save_raw_hex_visible(bool)  # Raw Hex 表示状態を保存
+```
 
 ## config.json の構造
 
@@ -179,35 +216,65 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 {
   "version": "1.0.0",
   "app_name": "MSC_MTC_Viewer",
+  "developer": "Satoshi Tateishi",
+  "updated": "2026-03-24",
   "bundle_id": "com.midi.mscmonitor",
-  "port": 0,                // 0 = 動的割り当て
+  "port": 0,                   // 0 = 動的割り当て
   "window_width": 1200,
-  "window_height": null,    // null = 画面高さに合わせる
-  "window_min_width": 980,  // 最小幅（mtc-viewer 400 + last-msc 380 + header-left 200）
+  "window_height": null,       // null = 画面高さに合わせる
+  "window_maximize": true,     // 起動時にウィンドウを最大化
+  "window_min_width": 1150,    // 最小幅（下記根拠を参照）
   "window_min_height": 400,
-  "window_x": null,         // null = OS デフォルト位置
-  "window_y": null
+  "window_x": null,            // null = OS デフォルト位置
+  "window_y": null,
+  "max_log_rows": 500,         // ログバッファ最大行数
+  "export_dir": "~/Downloads/MSC_MTC_Viewer_CSV",
+  "settings_dir": "~/Documents/MSC_MTC_Viewer"
 }
 ```
 
 ## UI レイアウト構造
 
-body は `flex-direction: column` の縦並び。各エリアの役割:
+body は `flex-direction: column` の縦並び。main-content が `flex-direction: row` の左右分割。
 
 ```
-┌─────────────────────────────────────────────┐
-│ header (flex-shrink: 0)                     │
-│  ├ header-left (flex:1) — タイトル・ポート  │
-│  ├ mtc-viewer (400px固定) — タイムコード    │
-│  └ last-msc   (380px固定) — 最終MSC表示    │
-├─────────────────────────────────────────────┤
-│ toolbar (flex-shrink: 0) — 操作ボタン群     │
-├─────────────────────────────────────────────┤
-│ table-wrap (flex:1, overflow:auto) — ログ表 │
-├─────────────────────────────────────────────┤
-│ clock-bar (flex-shrink: 0) — システム時計   │
-└─────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│ header (flex-shrink: 0)                              │
+│   ポートドロップダウン（折りたたみ・複数選択）・再スキャン  │
+├──────────────────────────┬───────────────────────────┤
+│ left-panel (flex:1)      │ right-panel (380px固定)    │
+│  ├ toolbar               │  ├ last-msc (flex:1)       │
+│  │   クリア / CSV /       │  │   最終受信 MSC 大型表示  │
+│  │   Raw Hex / 自動スクロール  last-msc の上が MSC     │
+│  └ table-wrap (flex:1)   │  └ mtc-viewer (flex:1)     │
+│      MSC ログテーブル     │      MTC タイムコード       │
+│      （列幅固定+filler）  │      mtc-viewer は下半分   │
+├──────────────────────────┴───────────────────────────┤
+│ clock-bar (flex-shrink: 0) — システム時計（HH:MM ss 日付）│
+└──────────────────────────────────────────────────────┘
 ```
+
+**Raw Hex 非表示時のレイアウト変化:**
+- `body.raw-hex-hidden` クラスで CSS を切り替え
+- `left-panel`: `flex: 0 0 730px`（固定幅・列合計 710px + スクロールバー）
+- `right-panel`: `flex: 1; min-width: 420px`（残余幅いっぱいに拡大）
+- MTC フォント: 48px → 64px、MSC Q_number フォント: 68px → 96px
+
+**MSC ログテーブルの列構成:**
+
+| 列 | 幅 | 備考 |
+|----|-----|------|
+| 時刻 | 100px | |
+| ポート | 160px | |
+| Dev ID | 70px | |
+| Format | 130px | |
+| Command | 110px | |
+| Q_number | 80px | |
+| Q_list | 60px | |
+| Raw Hex | 220px | Raw Hex 非表示時 width:0 |
+| (filler) | 残余 | テーブルを left-panel 全幅に埋める |
+
+`table { width: 100%; table-layout: fixed }` + filler 列で空白なしを実現。
 
 **最小ウィンドウ幅 1150px の根拠:**
 - Raw Hex 表示時: 左パネル最小(600) + 右パネル固定(380) = 980px
@@ -225,11 +292,31 @@ window = webview.create_window(
     resizable=True,
     min_size=(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
 )
-webview.start(lambda: window.maximize())  # 起動時に画面サイズいっぱいに展開
+webview.start(lambda: window.maximize() if WINDOW_MAXIMIZE else None)
 ```
 
 - `min_size` は `create_window()` のパラメータ。`config.json` の `window_min_width` / `window_min_height` で管理。
 - `webview.start(func)` に渡した関数は GUI 起動後に別スレッドで実行される。
+- `WINDOW_MAXIMIZE=true`（config.json）のとき起動直後に最大化。
+
+## macOS 解像度と CSS px
+
+pywebview（WKWebView）は **CSS px = macOS points（論理ピクセル）** を使用する。
+Retina ディスプレイの物理解像度（例: 2560×1664）は CSS px とは異なる。
+
+| デバイス | 物理解像度 | CSS px 幅（デフォルト） |
+|---------|----------|----------------------|
+| MacBook Air 13" M1/M2 | 2560×1600/1664 | **1280px** |
+| MacBook Air 13" M2（より多くのスペース） | 2560×1664 | **1470px** |
+| MacBook Pro 14" M3 | 3024×1964 | **1512px** |
+| MacBook Pro 16" M3 | 3456×2234 | **1728px** |
+| iMac 24" M3 | 4480×2520 | **2240px** |
+| iMac 27" / Studio Display | 5120×2880 | **2560px** |
+
+**レイアウト評価（最大化時）:**
+- MBA/MBP 13"〜16"（1280〜1728px）: 両 Raw Hex 状態で問題なし ✅
+- iMac/Studio Display（2240px〜）: Raw Hex 表示時に右パネル(380px)が画面の 15〜17% にとどまり
+  相対的に小さく見えるが、機能上の問題はない
 
 ## システム時計（clock-bar）
 
@@ -249,7 +336,7 @@ setTimeout(() => {
 
 ## PyInstaller ビルド時の注意
 
-- `--add-data` で `decoder.py`, `midi_receiver.py`, `config.json` を同梱すること
+- `--add-data` で `decoder.py`, `midi_receiver.py`, `persistence.py`, `config.json` を同梱すること
 - hidden imports: `flask`, `werkzeug`, `webview`, `objc`, `Foundation`, `AppKit`, `WebKit`, `rtmidi`
 - universal2（Intel + Apple Silicon 両対応）ビルドには python.org 版 Python 3.13 が必要
   - `setup.sh` が `/Library/Frameworks/Python.framework/Versions/3.13/bin/python3` を自動検出
