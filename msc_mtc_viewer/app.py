@@ -35,6 +35,8 @@ _config = _load_config()
 APP_NAME = _config["app_name"]
 WINDOW_WIDTH = _config.get("window_width", 1100)
 WINDOW_HEIGHT = _config.get("window_height")
+WINDOW_MIN_WIDTH = _config.get("window_min_width", 980)
+WINDOW_MIN_HEIGHT = _config.get("window_min_height", 400)
 WINDOW_X = _config.get("window_x")
 WINDOW_Y = _config.get("window_y")
 
@@ -520,6 +522,43 @@ HTML_UI = """<!DOCTYPE html>
     padding: 40px;
     font-size: 13px;
   }
+  .clock-bar {
+    flex-shrink: 0;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 0 10px;
+    user-select: none;
+  }
+  .clock-time {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    line-height: 1;
+    color: #7878cc;
+  }
+  .clock-hm {
+    font-size: 72px;
+    font-weight: 300;
+    letter-spacing: -2px;
+    font-variant-numeric: tabular-nums;
+  }
+  .clock-sec {
+    font-size: 36px;
+    font-weight: 300;
+    font-variant-numeric: tabular-nums;
+    color: #6060aa;
+    margin-bottom: 4px;
+  }
+  .clock-date {
+    font-size: 16px;
+    color: #7878cc;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
 </style>
 </head>
 <body>
@@ -577,6 +616,14 @@ HTML_UI = """<!DOCTYPE html>
     <tbody id="msg-tbody"></tbody>
   </table>
   <div class="empty-msg" id="empty-msg">MSC メッセージを待機中...</div>
+</div>
+
+<div class="clock-bar" id="clock-bar">
+  <div class="clock-time">
+    <span class="clock-hm" id="clock-hm">--:--</span>
+    <span class="clock-sec" id="clock-sec">--</span>
+  </div>
+  <div class="clock-date" id="clock-date"></div>
 </div>
 
 <script>
@@ -758,6 +805,23 @@ function updateCount() {
   document.getElementById('count-badge').textContent = tbody.rows.length + ' 件';
 }
 
+// ---- システム時計 ----
+const _fc = String.fromCharCode;
+const WEEKDAYS = [
+  _fc(0x65e5,0x66dc,0x65e5), _fc(0x6708,0x66dc,0x65e5), _fc(0x706b,0x66dc,0x65e5),
+  _fc(0x6c34,0x66dc,0x65e5), _fc(0x6728,0x66dc,0x65e5), _fc(0x91d1,0x66dc,0x65e5),
+  _fc(0x571f,0x66dc,0x65e5)
+];
+function updateClock() {
+  const now = new Date();
+  const hm = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const sec = String(now.getSeconds()).padStart(2,'0');
+  const date = now.getFullYear() + _fc(0x5e74) + (now.getMonth()+1) + _fc(0x6708) + now.getDate() + _fc(0x65e5) + ' ' + WEEKDAYS[now.getDay()];
+  document.getElementById('clock-hm').textContent = hm;
+  document.getElementById('clock-sec').textContent = sec;
+  document.getElementById('clock-date').textContent = date;
+}
+
 // ---- ツールバー操作 ----
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
@@ -803,6 +867,8 @@ async function exportCsv() {
 document.addEventListener('DOMContentLoaded', () => {
   loadPorts();
   startSSE();
+  updateClock();
+  setInterval(updateClock, 1000);
 });
 </script>
 </body>
@@ -841,6 +907,7 @@ if __name__ == "__main__":
         "url": f"http://127.0.0.1:{_PORT}/",
         "width": WINDOW_WIDTH,
         "resizable": True,
+        "min_size": (WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
     }
     if WINDOW_HEIGHT is not None:
         kwargs["height"] = WINDOW_HEIGHT
@@ -850,7 +917,7 @@ if __name__ == "__main__":
         kwargs["y"] = WINDOW_Y
 
     window = webview.create_window(**kwargs)
-    webview.start()
+    webview.start(lambda: window.maximize())
 
     # ウィンドウが閉じられたら MIDI ポートを切断して終了
     midi_receiver.disconnect_all()

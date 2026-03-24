@@ -78,6 +78,30 @@ _HTML_UI_BYTES = HTML_UI.encode("ascii", "xmlcharrefreplace")
 
 JSON レスポンスも `ensure_ascii=True`（デフォルト）で `\uXXXX` エスケープを使用し、文字コード問題を完全に回避する。
 
+### `<script>` 内の日本語文字列は `String.fromCharCode()` を使う
+
+`xmlcharrefreplace` は `<script>` タグ内の文字列リテラルも変換する。
+HTML エンティティ（`&#XXXX;`）は HTML パーサーが解釈するものであり、JS エンジンは解釈しないため文字化けする。
+
+**NG パターン（文字化けする）:**
+```python
+# Python 文字列中の日本語 → xmlcharrefreplace → &#XXXX; → JS が解釈できない
+'日曜日'          # → &#26085;&#26332;&#26085; （JSでは文字化け）
+'\u65e5\u66dc\u65e5'  # Python では同じ文字なので同様に変換される
+```
+
+**OK パターン（正しく動作する）:**
+```javascript
+// String.fromCharCode() は純粋な ASCII → 変換されない
+const _fc = String.fromCharCode;
+const WEEKDAYS = [
+  _fc(0x65e5,0x66dc,0x65e5),  // 日曜日
+  _fc(0x6708,0x66dc,0x65e5),  // 月曜日
+  // ...
+];
+const date = now.getFullYear() + _fc(0x5e74) + ...;  // 年
+```
+
 ## MSC デコードロジック（decoder.py）
 
 MSC フォーマット:
