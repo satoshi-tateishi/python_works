@@ -47,6 +47,12 @@ _log_buffer: list[dict] = []
 _log_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
+# MTC Quarter Frame ニブル蓄積バッファ
+# ---------------------------------------------------------------------------
+_qf_nibbles: list[int | None] = [None] * 8
+_mtc_lock = threading.Lock()
+
+# ---------------------------------------------------------------------------
 # HTML をモジュールロード時に ASCII 安全に変換する
 # 非ASCII文字を &#XXXX; 形式の XML 数値文字参照に置換することで、
 # WKWebView の文字コード自動判定による文字化けを完全に回避する。
@@ -108,17 +114,72 @@ def api_events():
                 yield ": keepalive\n\n"
                 continue
             try:
-                row = decoder.decode_msc_bytes(m["raw"])
-                if row is None:
-                    continue
-                ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-                row["timestamp"] = ts
-                row["port"] = m["port"]
-                with _log_lock:
-                    _log_buffer.append(row)
-                    if len(_log_buffer) > MAX_LOG_ROWS:
-                        _log_buffer.pop(0)
-                yield f"data: {json.dumps(row)}\n\n"
+                msg_type = m.get("type", "sysex")
+
+                if msg_type == "qf":
+                    # MTC Quarter Frame: ニブルを蓄積し、8つ揃ったらタイムコードを復元
+                    data_byte = m["raw"][1]
+                    nibble_type = (data_byte >> 4) & 0x07
+                    nibble_val = data_byte & 0x0F
+                    with _mtc_lock:
+                        _qf_nibbles[nibble_type] = nibble_val
+                        if all(n is not None for n in _qf_nibbles):
+                            frames = (_qf_nibbles[1] << 4) | _qf_nibbles[0]
+                            seconds = (_qf_nibbles[3] << 4) | _qf_nibbles[2]
+                            minutes = (_qf_nibbles[5] << 4) | _qf_nibbles[4]
+                            hours = ((_qf_nibbles[7] & 0x01) << 4) | _qf_nibbles[6]
+                            fps_code = (_qf_nibbles[7] >> 1) & 0x03
+                            mtc_event = {
+                                "event_type": "mtc",
+                                "hours": hours,
+                                "minutes": minutes,
+                                "seconds": seconds,
+                                "frames": frames,
+                                "fps_code": fps_code,
+                            }
+                            yield f"data: {json.dumps(mtc_event)}\n\n"
+
+                elif msg_type == "sysex":
+                    raw = m["raw"]
+                    # MTC Full Frame SysEx: F0 7F 7F 01 01 hr mn sc fr F7 (10 bytes)
+                    if (
+                        len(raw) == 10
+                        and raw[0] == 0xF0
+                        and raw[1] == 0x7F
+                        and raw[3] == 0x01
+                        and raw[4] == 0x01
+                        and raw[9] == 0xF7
+                    ):
+                        hr_byte = raw[5]
+                        fps_code = (hr_byte >> 5) & 0x03
+                        hours = hr_byte & 0x1F
+                        minutes = raw[6] & 0x3F
+                        seconds = raw[7] & 0x3F
+                        frames = raw[8] & 0x1F
+                        mtc_event = {
+                            "event_type": "mtc",
+                            "hours": hours,
+                            "minutes": minutes,
+                            "seconds": seconds,
+                            "frames": frames,
+                            "fps_code": fps_code,
+                        }
+                        yield f"data: {json.dumps(mtc_event)}\n\n"
+                    else:
+                        # MSC デコード
+                        row = decoder.decode_msc_bytes(raw)
+                        if row is None:
+                            continue
+                        ts = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+                        row["timestamp"] = ts
+                        row["port"] = m["port"]
+                        row["event_type"] = "msc"
+                        with _log_lock:
+                            _log_buffer.append(row)
+                            if len(_log_buffer) > MAX_LOG_ROWS:
+                                _log_buffer.pop(0)
+                        yield f"data: {json.dumps(row)}\n\n"
+
             except Exception:
                 # generator が死なないよう例外を握り潰す
                 continue
@@ -261,6 +322,33 @@ HTML_UI = """<!DOCTYPE html>
     color: var(--accent);
     letter-spacing: 0.5px;
     margin-bottom: 8px;
+  }
+  /* ---- MTC タイムコードビューワー ---- */
+  .mtc-viewer {
+    width: 400px;
+    flex-shrink: 0;
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 14px;
+  }
+  .mtc-tc {
+    font-size: 48px;
+    font-weight: 700;
+    color: #444;
+    letter-spacing: -1px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .mtc-tc.active { color: #6dbf8b; }
+  .mtc-fps {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+    letter-spacing: 1px;
   }
   /* ---- 最終受信 MSC 大型表示パネル ---- */
   .last-msc {
@@ -452,6 +540,10 @@ HTML_UI = """<!DOCTYPE html>
       <button class="btn btn-rescan" id="btn-rescan" onclick="loadPorts()">再スキャン</button>
     </div>
   </div>
+  <div class="mtc-viewer">
+    <div class="mtc-tc" id="mtc-tc">--:--:--.--</div>
+    <div class="mtc-fps" id="mtc-fps"></div>
+  </div>
   <div class="last-msc" id="last-msc">
     <div class="lm-left">
       <div class="lm-devid" id="lm-devid"></div>
@@ -588,13 +680,31 @@ function updateLastMsc(row) {
   panel.classList.add('flash');
 }
 
+// ---- MTC ビューワー ----
+const FPS_LABELS = ['24FPS', '25FPS', '30FPS DF', '30FPS'];
+function updateMtc(data) {
+  const tc =
+    String(data.hours).padStart(2, '0') + ':' +
+    String(data.minutes).padStart(2, '0') + ':' +
+    String(data.seconds).padStart(2, '0') + '.' +
+    String(data.frames).padStart(2, '0');
+  const el = document.getElementById('mtc-tc');
+  el.textContent = tc;
+  el.classList.add('active');
+  document.getElementById('mtc-fps').textContent = FPS_LABELS[data.fps_code] || '';
+}
+
 // ---- SSE ----
 function startSSE() {
   const evtSource = new EventSource('/api/events');
   evtSource.onmessage = (e) => {
-    const row = JSON.parse(e.data);
-    appendRow(row);
-    updateLastMsc(row);
+    const data = JSON.parse(e.data);
+    if (data.event_type === 'msc') {
+      appendRow(data);
+      updateLastMsc(data);
+    } else if (data.event_type === 'mtc') {
+      updateMtc(data);
+    }
   };
   evtSource.onerror = () => {
     // 再接続は EventSource が自動で行う

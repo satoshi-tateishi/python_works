@@ -72,7 +72,7 @@ def connect_port(port_name: str) -> bool:
     index = ports.index(port_name)
     midi_in.open_port(index)
     # SysEx を受信可能にする（タイミング・アクティブセンスは無視）
-    midi_in.ignore_types(sysex=False, timing=True, active_sense=True)
+    midi_in.ignore_types(sysex=False, timing=False, active_sense=True)
     midi_in.set_callback(_make_callback(port_name))
     _inputs[port_name] = midi_in
     return True
@@ -100,13 +100,19 @@ def _make_callback(port_name: str):
 
     def callback(message, _data=None):
         raw = message[0]  # list[int]
-        # SysEx のみキュー投入（F0 始まりのみ）
-        if not raw or raw[0] != 0xF0:
+        if not raw:
             return
-        try:
-            _message_queue.put_nowait({"port": port_name, "raw": raw})
-        except queue.Full:
-            pass  # キューが満杯の場合はサイレント破棄
+        # SysEx (F0) と MTC Quarter Frame (F1) のみキュー投入
+        if raw[0] == 0xF1:
+            try:
+                _message_queue.put_nowait({"type": "qf", "port": port_name, "raw": raw})
+            except queue.Full:
+                pass
+        elif raw[0] == 0xF0:
+            try:
+                _message_queue.put_nowait({"type": "sysex", "port": port_name, "raw": raw})
+            except queue.Full:
+                pass
 
     return callback
 
@@ -118,7 +124,7 @@ def get_next_message(timeout: float = 0.5) -> dict | None:
     """
     次のメッセージをブロッキングで取り出す。
     timeout 秒待っても来なければ None を返す。
-    各要素: {"port": str, "raw": list[int]}
+    各要素: {"type": "sysex"|"qf", "port": str, "raw": list[int]}
     """
     try:
         return _message_queue.get(timeout=timeout)
