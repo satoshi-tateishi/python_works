@@ -762,7 +762,7 @@ function updateCount() {
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
   const btn = document.getElementById('btn-autoscroll');
-  btn.textContent = '\u81ea\u52d5\u30b9\u30af\u30ed\u30fc\u30eb: ' + (autoScroll ? 'ON' : 'OFF');
+  btn.innerHTML = '自動スクロール: ' + (autoScroll ? 'ON' : 'OFF');
   btn.className = 'btn autoscroll-btn' + (autoScroll ? ' active' : '');
 }
 
