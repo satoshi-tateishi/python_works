@@ -35,6 +35,7 @@ _config = _load_config()
 APP_NAME = _config["app_name"]
 WINDOW_WIDTH = _config.get("window_width", 1100)
 WINDOW_HEIGHT = _config.get("window_height")
+WINDOW_MAXIMIZE = _config.get("window_maximize", False)
 WINDOW_MIN_WIDTH = _config.get("window_min_width", 980)
 WINDOW_MIN_HEIGHT = _config.get("window_min_height", 400)
 WINDOW_X = _config.get("window_x")
@@ -917,7 +918,7 @@ if __name__ == "__main__":
         kwargs["y"] = WINDOW_Y
 
     window = webview.create_window(**kwargs)
-    webview.start(lambda: window.maximize())
+    webview.start(lambda: window.maximize() if WINDOW_MAXIMIZE else None)
 
     # ウィンドウが閉じられたら MIDI ポートを切断して終了
     midi_receiver.disconnect_all()
