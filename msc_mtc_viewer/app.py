@@ -206,7 +206,7 @@ def api_export():
         rows = list(_log_buffer)
 
     filename = datetime.datetime.now().strftime("msc_log_%Y%m%d_%H%M%S.csv")
-    downloads_dir = os.path.expanduser("~/Downloads")
+    downloads_dir = os.path.expanduser("~/Downloads/MSC_MTC_Viewer_CSV")
     os.makedirs(downloads_dir, exist_ok=True)
     filepath = os.path.join(downloads_dir, filename)
 
