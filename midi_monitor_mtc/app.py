@@ -1,5 +1,5 @@
 """
-MIDI MSC Monitor — メインアプリケーション
+MSC_MTC_Viewer — メインアプリケーション
 Flask サーバー（バックグラウンドスレッド）+ pywebview ネイティブウィンドウ。
 HTML/JS UI はこのファイルに埋め込み文字列として定義する。
 """
@@ -271,7 +271,7 @@ HTML_UI = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MIDI MSC Monitor</title>
+<title>MSC_MTC_Viewer</title>
 <style>
   :root {
     --bg: #1a1a2e;
@@ -525,7 +525,7 @@ HTML_UI = """<!DOCTYPE html>
 <body>
 <header>
   <div class="header-left">
-    <h1>MIDI MSC Monitor</h1>
+    <h1>MSC_MTC_Viewer</h1>
     <div class="port-row" id="port-row">
       <span class="port-label">ポート:</span>
       <span id="port-list"></span>

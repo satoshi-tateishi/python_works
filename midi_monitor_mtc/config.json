@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "app_name": "MIDI MSC Monitor",
+  "app_name": "MSC_MTC_Viewer",
   "bundle_id": "com.midi.mscmonitor",
   "port": 0,
   "window_width": 1200,

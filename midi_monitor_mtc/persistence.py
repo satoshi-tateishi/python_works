@@ -7,7 +7,7 @@
 import json
 from pathlib import Path
 
-_SETTINGS_DIR = Path.home() / "Documents" / "MIDI MSC Monitor"
+_SETTINGS_DIR = Path.home() / "Documents" / "MSC_MTC_Viewer"
 _SETTINGS_FILE = _SETTINGS_DIR / "settings.json"
 
 
