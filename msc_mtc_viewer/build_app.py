@@ -6,12 +6,13 @@ Usage: .venv/bin/python build_app.py
 
 import json
 import os
-from pathlib import Path
 import plistlib
 import shutil
 import subprocess
 import sys
 import time
+import traceback
+from pathlib import Path
 
 import PyInstaller.__main__
 
@@ -41,7 +42,15 @@ def run_ruff():
         check=True,
     )
     subprocess.run(
-        [str(ruff), "format", "--check", "decoder.py", "midi_receiver.py", "persistence.py", "app.py"],
+        [
+            str(ruff),
+            "format",
+            "--check",
+            "decoder.py",
+            "midi_receiver.py",
+            "persistence.py",
+            "app.py",
+        ],
         cwd=CURRENT_DIR,
         check=True,
     )
@@ -130,8 +139,9 @@ def build():
         PyInstaller.__main__.run(args)
         fix_plist()
         print(f"\n✅ ビルド完了！\n{DIST_DIR}/{APP_NAME}.app")
-    except Exception as e:
-        print(f"\n❌ ビルドエラー: {e}")
+    except Exception:
+        traceback.print_exc()
+        print("\n❌ ビルドエラー")
         sys.exit(1)
 
 

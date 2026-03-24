@@ -11,5 +11,8 @@
   "window_min_width": 980,
   "window_min_height": 400,
   "window_x": null,
-  "window_y": null
+  "window_y": null,
+  "max_log_rows": 500,
+  "export_dir": "~/Downloads/MSC_MTC_Viewer_CSV",
+  "settings_dir": "~/Documents/MSC_MTC_Viewer"
 }

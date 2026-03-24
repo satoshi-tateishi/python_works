@@ -11,6 +11,7 @@ import os
 import sys
 import threading
 import time
+import traceback
 
 import webview
 from flask import Flask, Response, request
@@ -41,11 +42,14 @@ WINDOW_MIN_WIDTH = _config.get("window_min_width", 980)
 WINDOW_MIN_HEIGHT = _config.get("window_min_height", 400)
 WINDOW_X = _config.get("window_x")
 WINDOW_Y = _config.get("window_y")
+EXPORT_DIR = _config.get("export_dir", "~/Downloads/MSC_MTC_Viewer_CSV")
+
+persistence.init(_config.get("settings_dir", "~/Documents/MSC_MTC_Viewer"))
 
 # ---------------------------------------------------------------------------
 # ログバッファ（最大 500 件）
 # ---------------------------------------------------------------------------
-MAX_LOG_ROWS = 500
+MAX_LOG_ROWS = _config.get("max_log_rows", 500)
 _log_buffer: list[dict] = []
 _log_lock = threading.Lock()
 
@@ -184,7 +188,8 @@ def api_events():
                         yield f"data: {json.dumps(row)}\n\n"
 
             except Exception:
-                # generator が死なないよう例外を握り潰す
+                # generator が死なないよう例外を握り潰す（デバッグ用にトレースは出力）
+                traceback.print_exc()
                 continue
 
     return Response(
@@ -210,9 +215,9 @@ def api_export():
         rows = list(_log_buffer)
 
     filename = datetime.datetime.now().strftime("msc_log_%Y%m%d_%H%M%S.csv")
-    downloads_dir = os.path.expanduser("~/Downloads/MSC_MTC_Viewer_CSV")
-    os.makedirs(downloads_dir, exist_ok=True)
-    filepath = os.path.join(downloads_dir, filename)
+    export_dir = os.path.expanduser(EXPORT_DIR)
+    os.makedirs(export_dir, exist_ok=True)
+    filepath = os.path.join(export_dir, filename)
 
     with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
@@ -237,6 +242,25 @@ def api_export():
     return Response(body, content_type="application/json")
 
 
+@app.route("/api/settings")
+def api_settings():
+    """UI 設定（Raw Hex 表示状態など）を返す。"""
+    body = json.dumps(
+        {
+            "raw_hex_visible": persistence.load_raw_hex_visible(),
+        }
+    ).encode("ascii")
+    return Response(body, content_type="application/json")
+
+
+@app.route("/api/settings/raw_hex_visible", methods=["POST"])
+def api_save_raw_hex_visible():
+    """Raw Hex 列の表示状態を保存する。"""
+    data = request.get_json(force=True)
+    persistence.save_raw_hex_visible(bool(data.get("visible", True)))
+    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+
+
 # ---------------------------------------------------------------------------
 # Flask サーバー起動（動的ポート）
 # ---------------------------------------------------------------------------
@@ -244,6 +268,7 @@ from werkzeug.serving import make_server  # noqa: E402
 
 _server = None
 _PORT = None
+_port_ready = threading.Event()
 
 
 def _start_flask():
@@ -251,6 +276,7 @@ def _start_flask():
     _server = make_server("127.0.0.1", FLASK_PORT, app, threaded=True)
     _PORT = _server.socket.getsockname()[1]
     print(f"Flask server: http://127.0.0.1:{_PORT}/", flush=True)
+    _port_ready.set()
     _server.serve_forever()
 
 
@@ -304,27 +330,39 @@ HTML_UI = """<!DOCTYPE html>
     background: var(--bg3);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+  }
+  .main-content {
+    flex: 1;
     display: flex;
-    align-items: stretch;
+    flex-direction: row;
+    overflow: hidden;
+  }
+  .left-panel {
+    flex: 1;
+    min-width: 600px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .right-panel {
+    width: 380px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid var(--border);
   }
   .header-left {
     flex: 1;
     min-width: 0;
-    padding: 10px 16px 8px;
-  }
-  .header-left h1 {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--accent);
-    letter-spacing: 0.5px;
-    margin-bottom: 8px;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
   }
   /* ---- MTC タイムコードビューワー ---- */
   .mtc-viewer {
-    width: 400px;
-    flex-shrink: 0;
+    flex: 1;
     background: var(--bg);
-    border-left: 1px solid var(--border);
+    border-top: 1px solid var(--border);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -348,10 +386,8 @@ HTML_UI = """<!DOCTYPE html>
   }
   /* ---- 最終受信 MSC 大型表示パネル ---- */
   .last-msc {
-    width: 380px;
-    flex-shrink: 0;
+    flex: 1;
     background: var(--bg);
-    border-left: 1px solid var(--border);
     display: flex;
     align-items: center;
     padding: 8px 14px;
@@ -417,31 +453,38 @@ HTML_UI = """<!DOCTYPE html>
     text-align: right;
     white-space: nowrap;
   }
-  .port-row {
-    display: flex;
+  /* ---- ポートドロップダウン ---- */
+  .port-dropdown {
+    position: relative;
+    display: inline-flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
+    gap: 8px;
   }
-  .port-label {
-    color: var(--muted);
-    font-size: 12px;
-    margin-right: 4px;
-  }
-  .port-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+  .port-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 100;
     background: var(--bg2);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 3px 8px;
+    min-width: 240px;
+    padding: 4px 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  .port-panel.open { display: block; }
+  .port-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
     cursor: pointer;
     user-select: none;
-    transition: border-color 0.15s;
+    transition: background 0.1s;
   }
-  .port-item:hover { border-color: var(--accent); }
-  .port-item.connected { border-color: var(--go); }
+  .port-item:hover { background: var(--bg3); }
+  .port-item.connected { color: var(--go); }
   .port-item input[type=checkbox] { cursor: pointer; accent-color: var(--go); }
   .port-item label { cursor: pointer; font-size: 12px; }
   btn, .btn {
@@ -483,6 +526,7 @@ HTML_UI = """<!DOCTYPE html>
   }
   table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
     white-space: nowrap;
     font-size: 12px;
@@ -518,6 +562,13 @@ HTML_UI = """<!DOCTYPE html>
   .cmd-stop { color: var(--stop); font-weight: 600; }
   .cmd-other { color: var(--other); font-weight: 600; }
   .td-raw { font-family: monospace; color: #8888aa; font-size: 11px; }
+  /* ---- Raw Hex 折りたたみ ---- */
+  .raw-hex-hidden .th-raw { width: 0 !important; padding: 0; overflow: hidden; }
+  .raw-hex-hidden .td-raw { padding: 0; overflow: hidden; }
+  .raw-hex-hidden .left-panel  { flex: 0 0 730px; min-width: 0; }
+  .raw-hex-hidden .right-panel { flex: 1; width: auto; }
+  .raw-hex-hidden .mtc-tc { font-size: 64px; }
+  .raw-hex-hidden .lm-qnumber { font-size: 96px; }
   .empty-msg {
     text-align: center;
     color: var(--muted);
@@ -566,58 +617,68 @@ HTML_UI = """<!DOCTYPE html>
 <body>
 <header>
   <div class="header-left">
-    <h1>MSC_MTC_Viewer</h1>
-    <div class="port-row" id="port-row">
-      <span class="port-label">ポート:</span>
-      <span id="port-list"></span>
-      <button class="btn btn-rescan" id="btn-rescan" onclick="loadPorts()">再スキャン</button>
+    <div class="port-dropdown" id="port-dropdown">
+      <button class="btn" id="port-toggle" onclick="togglePortDropdown()">
+        ポート ▼ &nbsp;<span id="port-count-badge">--</span>
+      </button>
+      <div class="port-panel" id="port-panel">
+        <div id="port-list"></div>
+      </div>
     </div>
-  </div>
-  <div class="mtc-viewer">
-    <div class="mtc-tc" id="mtc-tc">--:--:--.--</div>
-    <div class="mtc-fps" id="mtc-fps"></div>
-  </div>
-  <div class="last-msc" id="last-msc">
-    <div class="lm-left">
-      <div class="lm-devid" id="lm-devid"></div>
-      <div class="lm-list"  id="lm-list"></div>
-    </div>
-    <div class="lm-center">
-      <div class="lm-command" id="lm-command"></div>
-      <div class="lm-qnumber" id="lm-qnumber">--</div>
-    </div>
-    <div class="lm-right">
-      <div class="lm-format" id="lm-format"></div>
-    </div>
+    <button class="btn btn-rescan" onclick="loadPorts()">再スキャン</button>
   </div>
 </header>
 
-<div class="toolbar">
-  <button class="btn" id="btn-clear" onclick="clearLog()">クリア</button>
-  <button class="btn" id="btn-export" onclick="exportCsv()">CSV エクスポート</button>
-  <button class="btn autoscroll-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">
-    自動スクロール: ON
-  </button>
-  <span class="count-badge" id="count-badge">0 件</span>
-</div>
-
-<div class="table-wrap" id="table-wrap">
-  <table id="msg-table">
-    <thead>
-      <tr>
-        <th>時刻</th>
-        <th>ポート</th>
-        <th>Dev ID</th>
-        <th>Format</th>
-        <th>Command</th>
-        <th>Q_number</th>
-        <th>Q_list</th>
-        <th>Raw Hex</th>
-      </tr>
-    </thead>
-    <tbody id="msg-tbody"></tbody>
-  </table>
-  <div class="empty-msg" id="empty-msg">MSC メッセージを待機中...</div>
+<div class="main-content">
+  <div class="left-panel">
+    <div class="toolbar">
+      <button class="btn" id="btn-clear" onclick="clearLog()">クリア</button>
+      <button class="btn" id="btn-export" onclick="exportCsv()">CSV エクスポート</button>
+      <button class="btn" id="btn-raw-hex" onclick="toggleRawHex()">Raw Hex</button>
+      <button class="btn autoscroll-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">
+        自動スクロール: ON
+      </button>
+      <span class="count-badge" id="count-badge">0 件</span>
+    </div>
+    <div class="table-wrap" id="table-wrap">
+      <table id="msg-table">
+        <thead>
+          <tr>
+            <th style="width:100px">時刻</th>
+            <th style="width:160px">ポート</th>
+            <th style="width:70px">Dev ID</th>
+            <th style="width:130px">Format</th>
+            <th style="width:110px">Command</th>
+            <th style="width:80px">Q_number</th>
+            <th style="width:60px">Q_list</th>
+            <th class="th-raw" style="width:220px">Raw Hex</th>
+            <th class="th-filler"></th>
+          </tr>
+        </thead>
+        <tbody id="msg-tbody"></tbody>
+      </table>
+      <div class="empty-msg" id="empty-msg">MSC メッセージを待機中...</div>
+    </div>
+  </div>
+  <div class="right-panel">
+    <div class="last-msc" id="last-msc">
+      <div class="lm-left">
+        <div class="lm-devid" id="lm-devid"></div>
+        <div class="lm-list"  id="lm-list"></div>
+      </div>
+      <div class="lm-center">
+        <div class="lm-command" id="lm-command"></div>
+        <div class="lm-qnumber" id="lm-qnumber">--</div>
+      </div>
+      <div class="lm-right">
+        <div class="lm-format" id="lm-format"></div>
+      </div>
+    </div>
+    <div class="mtc-viewer">
+      <div class="mtc-tc" id="mtc-tc">--:--:--.--</div>
+      <div class="mtc-fps" id="mtc-fps"></div>
+    </div>
+  </div>
 </div>
 
 <div class="clock-bar" id="clock-bar">
@@ -633,6 +694,45 @@ const MAX_ROWS = 500;
 let autoScroll = true;
 let rowCount = 0;
 
+// ---- 設定ロード ----
+async function loadSettings() {
+  try {
+    const res = await fetch('/api/settings');
+    const { raw_hex_visible } = await res.json();
+    setRawHexVisible(raw_hex_visible);
+  } catch (e) {}
+}
+
+function setRawHexVisible(visible) {
+  if (visible) {
+    document.body.classList.remove('raw-hex-hidden');
+  } else {
+    document.body.classList.add('raw-hex-hidden');
+  }
+  updateRawHexBtn(visible);
+}
+
+function updateRawHexBtn(visible) {
+  const btn = document.getElementById('btn-raw-hex');
+  // "Raw Hex: 表示" / "Raw Hex: 非表示"
+  btn.textContent = 'Raw Hex: ' + (visible
+    ? _fc(0x8868, 0x793a)
+    : _fc(0x975e, 0x8868, 0x793a));
+}
+
+async function toggleRawHex() {
+  const hidden = document.body.classList.toggle('raw-hex-hidden');
+  const visible = !hidden;
+  updateRawHexBtn(visible);
+  try {
+    await fetch('/api/settings/raw_hex_visible', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ visible })
+    });
+  } catch (e) {}
+}
+
 // ---- ポート管理 ----
 async function loadPorts() {
   try {
@@ -644,11 +744,23 @@ async function loadPorts() {
   }
 }
 
+function updatePortBadge(connCount, total) {
+  const badge = document.getElementById('port-count-badge');
+  if (total === 0 || connCount === 0) {
+    badge.textContent = _fc(0x63a5, 0x7d9a, 0x306a, 0x3057); // 接続なし
+  } else {
+    badge.textContent = connCount + ' ' + _fc(0x63a5, 0x7d9a); // N接続
+  }
+}
+
 function renderPorts(ports) {
   const container = document.getElementById('port-list');
   container.innerHTML = '';
+  const connCount = ports.filter(p => p.connected).length;
+  updatePortBadge(connCount, ports.length);
   if (ports.length === 0) {
-    container.innerHTML = '<span style="color:#8090b0;font-size:12px;">利用可能なポートなし</span>';
+    container.innerHTML =
+      '<div style="padding:8px 12px;color:#8090b0;font-size:12px;">利用可能なポートなし</div>';
     return;
   }
   ports.forEach(p => {
@@ -676,6 +788,16 @@ function encodePortId(name) {
   return name.replace(/[^a-zA-Z0-9]/g, '_');
 }
 
+function togglePortDropdown() {
+  document.getElementById('port-panel').classList.toggle('open');
+}
+
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('port-dropdown').contains(e.target)) {
+    document.getElementById('port-panel').classList.remove('open');
+  }
+});
+
 async function togglePort(portName, checked, item) {
   const url = checked ? '/api/ports/connect' : '/api/ports/disconnect';
   try {
@@ -689,6 +811,13 @@ async function togglePort(portName, checked, item) {
     } else {
       item.classList.remove('connected');
     }
+    const checkedCount = document.querySelectorAll(
+      '#port-list input[type=checkbox]:checked'
+    ).length;
+    const total = document.querySelectorAll(
+      '#port-list input[type=checkbox]'
+    ).length;
+    updatePortBadge(checkedCount, total);
   } catch (e) {
     console.error('ポート切替エラー', e);
   }
@@ -776,7 +905,8 @@ function appendRow(row) {
     '<td class="' + cmdClass + '">' + esc(row.command || '') + '</td>' +
     '<td>' + esc(row.q_number || '') + '</td>' +
     '<td>' + esc(row.q_list || '') + '</td>' +
-    '<td class="td-raw">' + esc(row.raw_hex || '') + '</td>';
+    '<td class="td-raw">' + esc(row.raw_hex || '') + '</td>' +
+    '<td></td>';
 
   tbody.appendChild(tr);
   rowCount++;
@@ -804,7 +934,7 @@ function esc(str) {
 
 function updateCount() {
   const tbody = document.getElementById('msg-tbody');
-  document.getElementById('count-badge').textContent = tbody.rows.length + ' 件';
+  document.getElementById('count-badge').textContent = tbody.rows.length + ' ' + _fc(0x4ef6);
 }
 
 // ---- システム時計 ----
@@ -816,9 +946,12 @@ const WEEKDAYS = [
 ];
 function updateClock() {
   const now = new Date();
-  const hm = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const hm = String(now.getHours()).padStart(2, '0') + ':' +
+    String(now.getMinutes()).padStart(2, '0');
   const sec = String(now.getSeconds()).padStart(2,'0');
-  const date = now.getFullYear() + _fc(0x5e74) + (now.getMonth()+1) + _fc(0x6708) + now.getDate() + _fc(0x65e5) + ' ' + WEEKDAYS[now.getDay()];
+  const date = now.getFullYear() + _fc(0x5e74) +
+    (now.getMonth() + 1) + _fc(0x6708) +
+    now.getDate() + _fc(0x65e5) + ' ' + WEEKDAYS[now.getDay()];
   document.getElementById('clock-hm').textContent = hm;
   document.getElementById('clock-sec').textContent = sec;
   document.getElementById('clock-date').textContent = date;
@@ -867,10 +1000,12 @@ async function exportCsv() {
 
 // ---- 初期化 ----
 document.addEventListener('DOMContentLoaded', () => {
+  loadSettings();
   loadPorts();
   startSSE();
   updateClock();
-  setTimeout(() => { updateClock(); setInterval(updateClock, 1000); }, 1000 - new Date().getMilliseconds());
+  const msToNext = 1000 - new Date().getMilliseconds();
+  setTimeout(() => { updateClock(); setInterval(updateClock, 1000); }, msToNext);
 });
 </script>
 </body>
@@ -889,11 +1024,8 @@ if __name__ == "__main__":
     t = threading.Thread(target=_start_flask, daemon=True)
     t.start()
 
-    # ポートが確定するまで少し待つ（make_server はスレッド内でバインドするため）
-    for _ in range(100):
-        if _PORT is not None:
-            break
-        time.sleep(0.05)
+    # ポートが確定するまで待つ（make_server はスレッド内でバインドするため）
+    _port_ready.wait(timeout=10.0)
 
     _wait_for_server()
 
