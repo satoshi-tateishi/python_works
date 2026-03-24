@@ -1,6 +1,7 @@
 {
   "version": "1.0.0",
   "app_name": "MSC_MTC_Viewer",
+  "developer": "Satoshi Tateishi",
   "bundle_id": "com.midi.mscmonitor",
   "port": 0,
   "window_width": 1200,

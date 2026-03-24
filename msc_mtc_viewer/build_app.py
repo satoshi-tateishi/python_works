@@ -24,6 +24,7 @@ with open(CURRENT_DIR / "config.json", encoding="utf-8") as _f:
 
 APP_NAME = _config["app_name"]
 BUNDLE_ID = _config["bundle_id"]
+DEVELOPER = _config.get("developer", "")
 
 
 def get_app_version():
@@ -80,7 +81,7 @@ def fix_plist():
     pl["CFBundlePackageType"] = "APPL"
     pl["CFBundleShortVersionString"] = version
     pl["CFBundleVersion"] = version
-    pl["NSHumanReadableCopyright"] = f"Developer: Satoshi Tateishi"
+    pl["NSHumanReadableCopyright"] = f"Developer: {DEVELOPER}"
 
     with open(plist_path, "wb") as f:
         plistlib.dump(pl, f)
