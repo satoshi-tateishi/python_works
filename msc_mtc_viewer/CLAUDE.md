@@ -178,14 +178,70 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 ```json
 {
   "version": "1.0.0",
-  "app_name": "MIDI MSC Monitor",
+  "app_name": "MSC_MTC_Viewer",
   "bundle_id": "com.midi.mscmonitor",
-  "port": 0,           // 0 = 動的割り当て
-  "window_width": 1100,
-  "window_height": null,  // null = 画面高さに合わせる
-  "window_x": null,       // null = OS デフォルト位置
+  "port": 0,                // 0 = 動的割り当て
+  "window_width": 1200,
+  "window_height": null,    // null = 画面高さに合わせる
+  "window_min_width": 980,  // 最小幅（mtc-viewer 400 + last-msc 380 + header-left 200）
+  "window_min_height": 400,
+  "window_x": null,         // null = OS デフォルト位置
   "window_y": null
 }
+```
+
+## UI レイアウト構造
+
+body は `flex-direction: column` の縦並び。各エリアの役割:
+
+```
+┌─────────────────────────────────────────────┐
+│ header (flex-shrink: 0)                     │
+│  ├ header-left (flex:1) — タイトル・ポート  │
+│  ├ mtc-viewer (400px固定) — タイムコード    │
+│  └ last-msc   (380px固定) — 最終MSC表示    │
+├─────────────────────────────────────────────┤
+│ toolbar (flex-shrink: 0) — 操作ボタン群     │
+├─────────────────────────────────────────────┤
+│ table-wrap (flex:1, overflow:auto) — ログ表 │
+├─────────────────────────────────────────────┤
+│ clock-bar (flex-shrink: 0) — システム時計   │
+└─────────────────────────────────────────────┘
+```
+
+**最小ウィンドウ幅 980px の根拠:**
+`mtc-viewer(400) + last-msc(380) + header-left最小(200) = 980`
+
+## ウィンドウ起動設定
+
+```python
+window = webview.create_window(
+    title=APP_NAME,
+    url=f"http://127.0.0.1:{_PORT}/",
+    width=WINDOW_WIDTH,
+    resizable=True,
+    min_size=(WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
+)
+webview.start(lambda: window.maximize())  # 起動時に画面サイズいっぱいに展開
+```
+
+- `min_size` は `create_window()` のパラメータ。`config.json` の `window_min_width` / `window_min_height` で管理。
+- `webview.start(func)` に渡した関数は GUI 起動後に別スレッドで実行される。
+
+## システム時計（clock-bar）
+
+UI 最下部に `HH:MM ss` と日付・曜日を常時表示。
+
+**秒境界への同期:**
+`setInterval(fn, 1000)` は開始タイミング次第で最大 1 秒の遅延が生じる。
+`setTimeout` で次の秒境界まで待機してから `setInterval` を開始することで解消。
+
+```javascript
+updateClock();
+setTimeout(() => {
+  updateClock();
+  setInterval(updateClock, 1000);
+}, 1000 - new Date().getMilliseconds());
 ```
 
 ## PyInstaller ビルド時の注意
