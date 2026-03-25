@@ -56,7 +56,10 @@ _log_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # MTC Quarter Frame ニブル蓄積バッファ
 # ---------------------------------------------------------------------------
+QF_TIMEOUT_SEC = 0.25  # これより長く途切れたら QF 状態をリセット
 _qf_nibbles: list[int | None] = [None] * 8
+_qf_last_type: int | None = None    # 直前に受信した nibble_type
+_qf_last_time: float | None = None  # 直前の QF 受信時刻 (monotonic)
 _mtc_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
@@ -88,7 +91,7 @@ def api_ports():
     return Response(body, content_type="application/json; charset=utf-8")
 
 
-_CT_JSON = {"Content-Type": "application/json"}
+_CT_JSON = {"Content-Type": "application/json; charset=utf-8"}
 
 
 @app.route("/api/ports/connect", methods=["POST"])
@@ -120,6 +123,67 @@ def api_disconnect():
     return json.dumps({"ok": True}), 200, _CT_JSON
 
 
+def _reset_qf_state() -> None:
+    """QF 蓄積状態を全リセット。必ず _mtc_lock 保持中に呼ぶこと。"""
+    global _qf_last_type, _qf_last_time
+    _qf_nibbles[:] = [None] * 8
+    _qf_last_type = None
+    _qf_last_time = None
+
+
+def _handle_qf_message(raw_qf: list[int]) -> dict | None:
+    """QF メッセージを処理し、8 nibble 揃ったら MTC イベント dict を返す。揃っていなければ None。"""
+    global _qf_last_type, _qf_last_time
+
+    if len(raw_qf) < 2:
+        return None
+    data_byte = raw_qf[1]
+    nibble_type = (data_byte >> 4) & 0x07
+    nibble_val = data_byte & 0x0F
+    if not (0 <= nibble_type <= 7):
+        return None
+
+    current_time = time.monotonic()
+
+    with _mtc_lock:
+        # タイムアウトチェック: 前回受信から一定時間以上空いていたらリセット
+        if _qf_last_time is not None and (current_time - _qf_last_time) > QF_TIMEOUT_SEC:
+            _reset_qf_state()
+
+        # 順序検証: 0→1→2→...→7→0→... の連続性チェック
+        if _qf_last_type is not None:
+            expected = (_qf_last_type + 1) % 8
+            same_type = nibble_type == _qf_last_type
+            in_order = nibble_type == expected
+            if not same_type and not in_order:
+                # サイクルが壊れた → リセットして今回の nibble を新サイクル先頭として受け入れる
+                _reset_qf_state()
+
+        # nibble 書き込み・状態更新
+        _qf_nibbles[nibble_type] = nibble_val
+        _qf_last_type = nibble_type
+        _qf_last_time = current_time
+
+        # 8 nibble 揃ったら MTC を復元
+        if all(n is not None for n in _qf_nibbles):
+            frames = ((_qf_nibbles[1] & 0x01) << 4) | _qf_nibbles[0]
+            seconds = ((_qf_nibbles[3] & 0x03) << 4) | _qf_nibbles[2]
+            minutes = ((_qf_nibbles[5] & 0x03) << 4) | _qf_nibbles[4]
+            hours = ((_qf_nibbles[7] & 0x01) << 4) | _qf_nibbles[6]
+            fps_code = (_qf_nibbles[7] >> 1) & 0x03
+            _reset_qf_state()
+            return {
+                "event_type": "mtc",
+                "hours": hours,
+                "minutes": minutes,
+                "seconds": seconds,
+                "frames": frames,
+                "fps_code": fps_code,
+            }
+
+    return None
+
+
 @app.route("/api/events")
 def api_events():
     """Server-Sent Events でリアルタイムにデコード済み MSC メッセージを配信する。"""
@@ -136,33 +200,10 @@ def api_events():
                 msg_type = m.get("type", "sysex")
 
                 if msg_type == "qf":
-                    # MTC Quarter Frame: ニブルを蓄積し、8つ揃ったらタイムコードを復元
-                    raw_qf = m["raw"]
-                    if len(raw_qf) < 2:
-                        continue
-                    data_byte = raw_qf[1]
-                    nibble_type = (data_byte >> 4) & 0x07
-                    nibble_val = data_byte & 0x0F
-                    if not (0 <= nibble_type <= 7):
-                        continue
-                    with _mtc_lock:
-                        _qf_nibbles[nibble_type] = nibble_val
-                        if all(n is not None for n in _qf_nibbles):
-                            frames = ((_qf_nibbles[1] & 0x01) << 4) | _qf_nibbles[0]
-                            seconds = ((_qf_nibbles[3] & 0x03) << 4) | _qf_nibbles[2]
-                            minutes = ((_qf_nibbles[5] & 0x03) << 4) | _qf_nibbles[4]
-                            hours = ((_qf_nibbles[7] & 0x01) << 4) | _qf_nibbles[6]
-                            fps_code = (_qf_nibbles[7] >> 1) & 0x03
-                            _qf_nibbles[:] = [None] * 8  # 次のサイクルのためリセット
-                            mtc_event = {
-                                "event_type": "mtc",
-                                "hours": hours,
-                                "minutes": minutes,
-                                "seconds": seconds,
-                                "frames": frames,
-                                "fps_code": fps_code,
-                            }
-                            yield f"data: {json.dumps(mtc_event)}\n\n"
+                    # MTC Quarter Frame: 順序検証・タイムアウトチェック付きで蓄積し復元
+                    mtc_event = _handle_qf_message(m["raw"])
+                    if mtc_event is not None:
+                        yield f"data: {json.dumps(mtc_event, ensure_ascii=False)}\n\n"
 
                 elif msg_type == "sysex":
                     raw = m["raw"]
@@ -189,7 +230,9 @@ def api_events():
                             "frames": frames,
                             "fps_code": fps_code,
                         }
-                        yield f"data: {json.dumps(mtc_event)}\n\n"
+                        with _mtc_lock:
+                            _reset_qf_state()
+                        yield f"data: {json.dumps(mtc_event, ensure_ascii=False)}\n\n"
                     else:
                         # MSC デコード
                         row = decoder.decode_msc_bytes(raw)
@@ -203,7 +246,7 @@ def api_events():
                             _log_buffer.append(row)
                             if len(_log_buffer) > MAX_LOG_ROWS:
                                 _log_buffer.pop(0)
-                        yield f"data: {json.dumps(row)}\n\n"
+                        yield f"data: {json.dumps(row, ensure_ascii=False)}\n\n"
 
             except Exception:
                 # generator が死なないよう例外を握り潰す（デバッグ用にトレースは出力）
@@ -221,6 +264,8 @@ def api_events():
 def api_clear():
     with _log_lock:
         _log_buffer.clear()
+    with _mtc_lock:
+        _reset_qf_state()
     # Queue も空にする
     midi_receiver.drain_queue()
     return json.dumps({"ok": True}), 200, _CT_JSON
@@ -1087,6 +1132,57 @@ function updateCount() {
   document.getElementById('count-badge').textContent = tbody.rows.length + ' rows';
 }
 
+function renderRows(rows) {
+  const tbody = document.getElementById('msg-tbody');
+  const emptyMsg = document.getElementById('empty-msg');
+
+  tbody.innerHTML = '';
+
+  if (rows.length === 0) {
+    emptyMsg.style.display = '';
+    updateCount();
+    return;
+  }
+
+  emptyMsg.style.display = 'none';
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(row => {
+    const cmd = row.command || '';
+    let cmdClass = 'cmd-other';
+    if (cmd === 'GO' || cmd === 'TIMED_GO' || cmd === 'RESUME' || cmd === 'LOAD') {
+      cmdClass = 'cmd-go';
+    } else if (cmd === 'STOP' || cmd === 'ALL_OFF' || cmd === 'RESET' || cmd === 'GO_OFF') {
+      cmdClass = 'cmd-stop';
+    }
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="td-ts">' + esc(row.timestamp || '') + '</td>' +
+      '<td class="td-port">' + esc(row.port || '') + '</td>' +
+      '<td class="td-devid">' + esc(row.device_id || '') + '</td>' +
+      '<td>' + esc(row.cmd_format || '') + '</td>' +
+      '<td class="' + cmdClass + '">' + esc(row.command || '') + '</td>' +
+      '<td class="td-qnum">' + esc(row.q_number || '') + '</td>' +
+      '<td>' + esc(row.q_list || '') + '</td>' +
+      '<td class="td-raw">' + esc(row.raw_hex || '') + '</td>' +
+      '<td></td>';
+    frag.appendChild(tr);
+  });
+  tbody.appendChild(frag);
+
+  updateCount();
+
+  if (searchQuery !== '') {
+    runSearch();
+  }
+
+  if (autoScroll) {
+    const wrap = document.getElementById('table-wrap');
+    wrap.scrollTop = wrap.scrollHeight;
+  }
+}
+
+
 // ---- システム時計 ----
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1138,9 +1234,7 @@ async function changeMaxRows(n) {
   try {
     const res = await fetch('/api/logs?limit=' + n);
     const { rows } = await res.json();
-    const tbody = document.getElementById('msg-tbody');
-    tbody.innerHTML = '';
-    rows.forEach(row => appendRow(row));
+    renderRows(rows);
   } catch (e) {}
   // 設定を保存
   try {

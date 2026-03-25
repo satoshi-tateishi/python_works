@@ -42,18 +42,21 @@ bash setup.sh
 ## スレッドモデル
 
 ```
-rtmidi コールバックスレッド       Flask SSE スレッド          pywebview メインスレッド
-───────────────────────────       ─────────────────           ────────────────────────
-MidiIn callback (port A/B)        drain_queue() ループ        webview.start()
-  raw bytes                         decode_msc_bytes()              │
-      │                             _log_buffer に追記        http://127.0.0.1:<動的PORT>
-      ▼                             SSE yield                       │
-  _message_queue.put_nowait()            │                   ブラウザ (WebKit)
-  (queue.Queue: スレッドセーフ)          ▼                   EventSource → appendRow()
+rtmidi コールバックスレッド       Flask SSE スレッド              pywebview メインスレッド
+───────────────────────────       ─────────────────               ────────────────────────
+MidiIn callback (port A/B)        get_next_message(timeout=0.5)   webview.start()
+  raw bytes                         QF: _handle_qf_message()            │
+      │                             SysEx: Full Frame / MSC       http://127.0.0.1:<動的PORT>
+      ▼                             _log_buffer に追記                   │
+  _message_queue.put_nowait()       SSE yield                     ブラウザ (WebKit)
+  (queue.Queue: スレッドセーフ)          │                         EventSource
+                                        ▼                           appendRow() ← SSE "msc"/"mtc"
+                                   keepalive (500ms 無通信時)       renderRows() ← MAX_ROWS 切替時
 ```
 
 - `queue.Queue` は rtmidi の C スレッドから安全に `put_nowait()` できる
-- `_log_buffer` の読み書きは `threading.Lock` で保護
+- `_log_buffer` / `_qf_nibbles` の読み書きはそれぞれ `_log_lock` / `_mtc_lock` で保護
+- `drain_queue()` は `api_clear()` のみで使用（SSE ループでは使わない）
 - Flask ポートは `make_server('127.0.0.1', 0, app, threaded=True)` で動的割り当て（`threaded=True` 必須: SSE が単一スレッドを占有するため）
 - ポート確定待ちは `threading.Event`（`_port_ready.wait(timeout=10.0)`）で実装
 
@@ -96,7 +99,8 @@ pywebview の WKWebView が Content-Type の charset を無視するケースが
 _HTML_UI_BYTES = HTML_UI.encode("ascii", "xmlcharrefreplace")
 ```
 
-JSON レスポンスも `ensure_ascii=True`（デフォルト）で `\uXXXX` エスケープを使用し、文字コード問題を完全に回避する。
+SSE（`/api/events`）の `json.dumps` は `ensure_ascii=False` を使用する。
+JSON API レスポンス（`_CT_JSON` 系）は `ensure_ascii=True`（デフォルト）で `\uXXXX` エスケープを維持する。
 
 ### `<script>` 内の日本語文字列は `String.fromCharCode()` を使う
 
@@ -167,6 +171,52 @@ F0 7F <device_ID> 02 <command_format> <command> [data] F7
 }
 ```
 
+## MTC Quarter Frame 処理（app.py）
+
+MTC QF（`0xF1`）は 8 種類の nibble（type 0〜7）を順番に受信し、8 個揃ったら 1 フレームのタイムコードを復元する。
+
+### 状態変数・定数
+
+| 名前 | 型 | 説明 |
+|------|----|------|
+| `QF_TIMEOUT_SEC` | `float` | QF が途切れてリセットするまでの閾値（0.25 秒） |
+| `_qf_nibbles` | `list[int \| None]` | 8 スロットの nibble バッファ |
+| `_qf_last_type` | `int \| None` | 直前に受信した nibble_type（0〜7） |
+| `_qf_last_time` | `float \| None` | 直前の QF 受信時刻（`time.monotonic()`） |
+| `_mtc_lock` | `threading.Lock` | 上記全変数の保護ロック |
+
+### ヘルパー関数
+
+**`_reset_qf_state()`** — `_qf_nibbles` / `_qf_last_type` / `_qf_last_time` を一括リセット。
+**必ず `_mtc_lock` 保持中に呼ぶこと**。外部から単独で呼ばない。
+
+**`_handle_qf_message(raw_qf)`** — QF 1 メッセージを処理し、8 nibble 揃ったら MTC イベント dict を返す。
+内部で `_mtc_lock` を取得し、以下の順で処理する:
+1. タイムアウトチェック: `_qf_last_time` から `QF_TIMEOUT_SEC` 超過 → リセット
+2. 順序検証: `(_qf_last_type + 1) % 8` でなく、かつ同 type でもない → リセット（再同期）
+3. nibble 書き込み・状態更新
+4. 8 nibble 揃ったら復元 → 全リセットしてイベント dict 返却
+
+### QF リセットのトリガー
+
+| タイミング | 処理 |
+|-----------|------|
+| QF タイムアウト（0.25s 以上空白） | `_handle_qf_message()` 内でリセット |
+| QF 順序違反 | `_handle_qf_message()` 内でリセット・再同期 |
+| 8 nibble 揃って復元後 | `_handle_qf_message()` 内でリセット |
+| MTC Full Frame SysEx 受信 | `generate()` 内で `with _mtc_lock: _reset_qf_state()` |
+| `/api/clear` 実行 | `api_clear()` 内で `with _mtc_lock: _reset_qf_state()` |
+
+### MTC イベントのフォーマット（SSE）
+
+```json
+{"event_type": "mtc", "hours": 1, "minutes": 30, "seconds": 0, "frames": 12, "fps_code": 1}
+```
+
+`fps_code`: 0=24fps, 1=25fps, 2=29.97fps(DF), 3=30fps
+
+---
+
 ## midi_receiver.py の主要 API
 
 ```python
@@ -189,11 +239,24 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 | GET | `/api/ports` | 利用可能ポート一覧（接続状態付き） |
 | POST | `/api/ports/connect` | ポート接続 `{"port": "..."}` |
 | POST | `/api/ports/disconnect` | ポート切断 `{"port": "..."}` |
-| GET | `/api/events` | SSE（リアルタイム MSC 配信、20ms ポーリング） |
-| POST | `/api/clear` | ログバッファクリア（Queue も空にする） |
+| GET | `/api/events` | SSE（リアルタイム配信、500ms keepalive）|
+| POST | `/api/clear` | ログバッファ・QF 状態クリア（Queue も空にする） |
 | POST | `/api/export` | CSV ダウンロード（`msc_log_YYYYMMDD_HHMMSS.csv`） |
+| GET | `/api/logs?limit=N` | ログバッファ末尾 N 件を返す（`renderRows()` が使用） |
 | GET | `/api/settings` | UI 設定取得（`raw_hex_visible` 等） |
 | POST | `/api/settings/raw_hex_visible` | Raw Hex 列表示状態を保存 `{"visible": bool}` |
+
+## JS テーブル描画関数の使い分け
+
+| 関数 | 用途 | DOM 操作方針 |
+|------|------|-------------|
+| `appendRow(row)` | SSE リアルタイム追加（1件） | 直接 `tbody.appendChild`、毎回 `updateCount()` / autoscroll / search-match 判定 |
+| `renderRows(rows)` | 一括再描画（MAX_ROWS 切替時など） | `DocumentFragment` で全行生成後に1回 `appendChild`、`updateCount()` / `runSearch()` / autoscroll を最後に1回のみ |
+
+- `renderRows()` は `changeMaxRows()` から呼ぶ。`appendRow()` は呼ばない。
+- `renderRows()` 内では MAX_ROWS による行削除を行わない（サーバーが `limit` 件を返すため不要）。
+
+---
 
 ## settings.json 永続化（persistence.py）
 
