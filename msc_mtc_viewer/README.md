@@ -1,11 +1,11 @@
-# MIDI MSC Monitor
+# MSC_MTC_Viewer
 
-USB-MIDI インターフェースや IAC から受信した **MIDI Show Control (MSC)** メッセージをリアルタイムで解析・表示する macOS デスクトップアプリ。
+USB-MIDI インターフェースや IAC から受信した **MIDI Show Control (MSC)** および **MTC タイムコード**をリアルタイムで解析・表示する macOS デスクトップアプリ。
 
 ## 対応環境
 
-- macOS（Intel / Apple Silicon 両対応）
-- Python 3.11 以上（ビルドには python.org 版 Python 3.13 推奨）
+- macOS（Intel / Apple Silicon）
+- Python 3.13（ビルドには python.org 版 Python 3.13 必須）
 
 ---
 
@@ -14,7 +14,7 @@ USB-MIDI インターフェースや IAC から受信した **MIDI Show Control 
 ### MIDI ポート管理
 - 接続中の USB-MIDI インターフェースおよび IAC をチェックボックスで複数選択可能
 - 「再スキャン」ボタンでポート一覧を更新
-- 前回使用したポートを起動時に自動接続（`~/Documents/MIDI MSC Monitor/settings.json` に保存）
+- 前回使用したポートを起動時に自動接続（`~/Documents/MSC_MTC_Viewer/settings.json` に保存）
 
 ### MSC デコード
 受信した SysEx メッセージを解析し、以下の情報を表示する。
@@ -28,7 +28,7 @@ USB-MIDI インターフェースや IAC から受信した **MIDI Show Control 
 | Command | コマンド名（`GO`, `STOP`, `RESUME` など） |
 | Q_number | キュー番号 |
 | Q_list | キューリスト番号 |
-| Raw Hex | 生バイト列（16進数） |
+| Raw Hex | 生バイト列（16進数・表示切替可） |
 
 #### 対応コマンドフォーマット
 `Lighting`, `Moving Lights`, `Colour Changers`, `Strobes`, `Lasers`, `Chasers`,
@@ -43,38 +43,61 @@ USB-MIDI インターフェースや IAC から受信した **MIDI Show Control 
 
 未知のコマンドバイトは `CMD_0xNN` / `FMT_0xNN` 形式で表示（サイレント破棄しない）。
 
+### MTC タイムコード表示
+- MTC Quarter Frame（`0xF1`）および Full Frame SysEx を受信してタイムコードを復元・表示
+- `HH:MM:SS.FF` 形式、FPS（24 / 25 / 29.97DF / 30）を表示
+- 受信順序検証・タイムアウトリセット（0.25s）により、接続直後や途切れ後でも正確に同期
+
 ### ログ操作
-- **クリア**: 表示中のログを消去
-- **CSV エクスポート**: 表示中のログを `msc_log_YYYYMMDD_HHMMSS.csv` としてダウンロード
-- **自動スクロール**: ON/OFF 切替。新着メッセージへ自動スクロールするかを制御
-- 最大 500 行表示（超えると古い行から削除）
+- **クリア**: 表示中のログを消去（QF 状態もリセット）
+- **CSV エクスポート**: 表示中のログを `msc_log_YYYYMMDD_HHMMSS.csv` として保存
+- **Raw Hex 列**: 表示 / 非表示を切替可能
+- **自動スクロール**: ON/OFF 切替
+- **最大表示件数**: 100 / 200 / 500 / 1000 行から選択
 
 ---
 
 ## セットアップ
 
 ```bash
-# 初回のみ
+# arm64（Apple Silicon）用のみ
 bash setup.sh
+
+# x86_64（Intel）用のみ
+bash setup.sh --x86
+
+# 両方
+bash setup.sh --all
 
 # 起動
 .venv/bin/python app.py
 ```
 
-`setup.sh` は python.org 版 Python 3.13 を優先して使用する（universal2 ビルド用）。
-見つからない場合はシステムの `python3` にフォールバックする（arm64 専用ビルドになる）。
+> python.org 版 Python 3.13（universal2）が必要。
+> `/Library/Frameworks/Python.framework/Versions/3.13/bin/python3` にインストールされている前提。
 
 ---
 
 ## macOS .app ビルド
 
 ```bash
+# arm64（Apple Silicon）用
+.venv/bin/python build_app.py --arch arm64
+
+# x86_64（Intel）用（事前に bash setup.sh --x86 が必要）
+.venv/bin/python build_app.py --arch x86_64
+
+# 両方
 .venv/bin/python build_app.py
 ```
 
-`dist/MIDI MSC Monitor.app` が生成される。Intel / Apple Silicon の両アーキテクチャに対応した universal2 バイナリ。
+| 出力ファイル | 対象 |
+|---|---|
+| `dist/MSC_MTC_Viewer_arm64.app` | Apple Silicon Mac |
+| `dist/MSC_MTC_Viewer_x86_64.app` | Intel Mac |
 
-> ビルドには python.org 版 Python 3.13 と Xcode Command Line Tools が必要。
+> `python-rtmidi 1.5.8` は meson-python ベースのため universal2 ビルド非対応。
+> アーキテクチャ別に個別ファイルを配布する。
 
 ---
 
@@ -89,8 +112,10 @@ msc_mtc_viewer/
 ├── config.json       # アプリ設定（バージョン、ウィンドウサイズ等）
 ├── requirements.txt  # 依存パッケージ
 ├── pyproject.toml    # Ruff 設定
-├── setup.sh          # venv 作成 + pip install
-├── build_app.py      # PyInstaller universal2 ビルドスクリプト
+├── setup.sh          # venv 作成（--x86 / --all オプションあり）
+├── build_app.py      # PyInstaller ビルドスクリプト（--arch arm64|x86_64）
+├── .venv/            # arm64 用 Python 環境
+├── .venv_x86/        # x86_64 用 Python 環境（setup.sh --x86 で作成）
 ├── CLAUDE.md         # 開発者向けドキュメント
 └── README.md         # 本ファイル
 ```
@@ -100,16 +125,16 @@ msc_mtc_viewer/
 ## 設定ファイル
 
 ```
-~/Documents/MIDI MSC Monitor/settings.json
+~/Documents/MSC_MTC_Viewer/settings.json
 ```
 
-前回接続していたポート名を保存する。Finder から直接確認・編集可能。
+前回接続していたポート名・UI 設定を保存する。Finder から直接確認・編集可能。
 
 ```json
 {
-  "saved_ports": [
-    "IAC ドライバ Bus 1"
-  ]
+  "saved_ports": ["IAC ドライバ Bus 1"],
+  "raw_hex_visible": true,
+  "max_display_rows": 500
 }
 ```
 

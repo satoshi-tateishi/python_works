@@ -20,8 +20,10 @@ Flask + pywebview + PyInstaller による macOS .app。
 ## 開発コマンド
 
 ```bash
-# 初回のみ
-bash setup.sh
+# 初回セットアップ
+bash setup.sh            # arm64 (.venv) のみ
+bash setup.sh --x86      # x86_64 (.venv_x86) のみ（Rosetta 2 経由）
+bash setup.sh --all      # 両方
 
 # 起動
 .venv/bin/python app.py
@@ -31,7 +33,9 @@ bash setup.sh
 .venv/bin/ruff format decoder.py midi_receiver.py persistence.py app.py
 
 # .app ビルド（Ruff チェックを含む）
-.venv/bin/python build_app.py
+.venv/bin/python build_app.py                  # arm64 と x86_64 を両方ビルド
+.venv/bin/python build_app.py --arch arm64     # Apple Silicon 専用
+.venv/bin/python build_app.py --arch x86_64   # Intel 専用（.venv_x86 が必要）
 ```
 
 ## コーディングルール
@@ -401,7 +405,18 @@ setTimeout(() => {
 
 - `--add-data` で `decoder.py`, `midi_receiver.py`, `persistence.py`, `config.json` を同梱すること
 - hidden imports: `flask`, `werkzeug`, `webview`, `objc`, `Foundation`, `AppKit`, `WebKit`, `rtmidi`
-- universal2（Intel + Apple Silicon 両対応）ビルドには python.org 版 Python 3.13 が必要
-  - `setup.sh` が `/Library/Frameworks/Python.framework/Versions/3.13/bin/python3` を自動検出
-  - `markupsafe` は arm64 専用 wheel が配布されているため、`ARCHFLAGS="-arch x86_64 -arch arm64"` でソースビルド（`setup.sh` で自動対応済み）
-  - `python-rtmidi` は macOS 向け fat wheel が PyPI にあるため通常の `pip install` で対応
+- ビルドには python.org 版 Python 3.13 が必要（`/Library/Frameworks/Python.framework/Versions/3.13/bin/python3`）
+
+### アーキテクチャ別ビルド
+
+`python-rtmidi 1.5.8` は `meson-python` ベースのため `ARCHFLAGS` による universal2 ビルドが**不可能**。
+Intel / Apple Silicon それぞれ専用の .app を別ファイルとして生成する。
+
+| arch | venv | PyInstaller オプション | 出力 |
+|---|---|---|---|
+| arm64 | `.venv` | `--target-arch=arm64` | `MSC_MTC_Viewer_arm64.app` |
+| x86_64 | `.venv_x86` | `--target-arch=x86_64` | `MSC_MTC_Viewer_x86_64.app` |
+
+- **arm64 venv**: `setup.sh` が python.org 版 Python 3.13 (universal2) で作成。`markupsafe` は arm64 専用 wheel のため `ARCHFLAGS="-arch x86_64 -arch arm64"` でソースビルド（`setup.sh` で自動対応済み）。
+- **x86_64 venv**: `setup.sh --x86` が `arch -x86_64 python3 -m venv .venv_x86` で作成（Rosetta 2 経由）。`python-rtmidi` は pip が x86_64 wheel を自動選択するため ARCHFLAGS 不要。
+- x86_64 ビルド時は `build_app.py` が `arch -x86_64 .venv_x86/bin/pyinstaller` をサブプロセスで呼ぶ。
