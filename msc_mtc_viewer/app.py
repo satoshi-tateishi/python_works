@@ -546,6 +546,19 @@ HTML_UI = """<!DOCTYPE html>
     color: var(--muted);
     font-size: 12px;
   }
+  .search-input {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 12px;
+    padding: 3px 8px;
+    outline: none;
+    width: 160px;
+  }
+  .search-input:focus { border-color: var(--accent); }
+  .search-input::placeholder { color: var(--muted); }
+  tr.search-match td { background: #2a3f6f; }
   .autoscroll-btn.active { color: var(--go); border-color: var(--go); }
   .table-wrap {
     flex: 1;
@@ -671,6 +684,11 @@ HTML_UI = """<!DOCTYPE html>
         <option value="1000">1000件</option>
         <option value="5000">5000件</option>
       </select>
+      <input type="text" class="search-input" id="search-input" autocomplete="off"
+        placeholder="Q_number 検索..." oninput="onSearchInput(this.value)">
+      <button class="btn" id="btn-search-clear" onclick="clearSearch()"
+        style="display:none; padding:3px 7px;">&#10005;</button>
+      <span id="search-count" style="display:none; color:var(--accent); font-size:12px;"></span>
       <span class="count-badge" id="count-badge">0 件</span>
     </div>
     <div class="table-wrap" id="table-wrap">
@@ -725,6 +743,7 @@ HTML_UI = """<!DOCTYPE html>
 <script>
 let MAX_ROWS = 500;
 let autoScroll = true;
+let searchQuery = '';
 
 // ---- 設定ロード ----
 async function loadSettings() {
@@ -938,7 +957,7 @@ function appendRow(row) {
     '<td class="td-devid">' + esc(row.device_id || '') + '</td>' +
     '<td>' + esc(row.cmd_format || '') + '</td>' +
     '<td class="' + cmdClass + '">' + esc(row.command || '') + '</td>' +
-    '<td>' + esc(row.q_number || '') + '</td>' +
+    '<td class="td-qnum">' + esc(row.q_number || '') + '</td>' +
     '<td>' + esc(row.q_list || '') + '</td>' +
     '<td class="td-raw">' + esc(row.raw_hex || '') + '</td>' +
     '<td></td>';
@@ -951,6 +970,16 @@ function appendRow(row) {
   }
 
   updateCount();
+
+  // 検索中は新規行に判定を適用し、トリム後の件数を更新
+  if (searchQuery !== '') {
+    const qCell = tr.querySelector('td.td-qnum');
+    if (qCell && qCell.textContent.includes(searchQuery)) {
+      tr.classList.add('search-match');
+    }
+    const n = tbody.querySelectorAll('tr.search-match').length;
+    document.getElementById('search-count').textContent = n + ' ' + _fc(0x4ef6, 0x4e00, 0x81f4);
+  }
 
   if (autoScroll) {
     const wrap = document.getElementById('table-wrap');
@@ -1012,6 +1041,41 @@ async function changeMaxRows(n) {
   } catch (e) {}
 }
 
+// ---- 検索 ----
+function onSearchInput(val) {
+  searchQuery = val.trim().toLowerCase();
+  document.getElementById('btn-search-clear').style.display = searchQuery !== '' ? '' : 'none';
+  runSearch();
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  searchQuery = '';
+  document.getElementById('btn-search-clear').style.display = 'none';
+  runSearch();
+}
+
+function runSearch() {
+  const tbody = document.getElementById('msg-tbody');
+  const countEl = document.getElementById('search-count');
+  if (searchQuery === '') {
+    for (const tr of tbody.querySelectorAll('tr')) {
+      tr.classList.remove('search-match');
+    }
+    countEl.style.display = 'none';
+    return;
+  }
+  let matchCount = 0;
+  for (const tr of tbody.querySelectorAll('tr')) {
+    const qCell = tr.querySelector('td.td-qnum');
+    const match = qCell != null && qCell.textContent.includes(searchQuery);
+    tr.classList.toggle('search-match', match);
+    if (match) matchCount++;
+  }
+  countEl.textContent = matchCount + ' ' + _fc(0x4ef6, 0x4e00, 0x81f4);
+  countEl.style.display = '';
+}
+
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
   const btn = document.getElementById('btn-autoscroll');
@@ -1034,6 +1098,7 @@ async function clearLog() {
   document.getElementById('lm-qnumber').textContent = '--';
   document.getElementById('lm-format').textContent  = '';
   document.getElementById('last-msc').classList.remove('flash');
+  runSearch();
 }
 
 async function exportCsv() {
