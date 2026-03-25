@@ -567,6 +567,20 @@ HTML_UI = """<!DOCTYPE html>
   .search-input:focus { border-color: var(--accent); }
   .search-input::placeholder { color: var(--muted); }
   tr.search-match td { background: #2a3f6f; }
+  .btn-danger { background: #c0392b; border-color: #9b2e22; color: #fff; }
+  .btn-danger:hover { background: #a93226; border-color: #922b21; }
+  #modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6); align-items: center;
+    justify-content: center; z-index: 1000;
+  }
+  #modal-box {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 20px 24px;
+    min-width: 280px; display: flex; flex-direction: column; gap: 16px;
+  }
+  #modal-message { color: var(--text); font-size: 13px; line-height: 1.5; }
+  #modal-buttons { display: flex; justify-content: flex-end; gap: 8px; }
   .btn.active { color: var(--go); border-color: var(--go); }
   .table-wrap {
     flex: 1;
@@ -738,6 +752,16 @@ HTML_UI = """<!DOCTYPE html>
     <div class="mtc-viewer">
       <div class="mtc-tc" id="mtc-tc">--:--:--.--</div>
       <div class="mtc-fps" id="mtc-fps"></div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-overlay">
+  <div id="modal-box">
+    <p id="modal-message"></p>
+    <div id="modal-buttons">
+      <button class="btn" id="modal-cancel">Cancel</button>
+      <button class="btn" id="modal-ok">OK</button>
     </div>
   </div>
 </div>
@@ -1021,6 +1045,31 @@ function updateClock() {
   document.getElementById('clock-date').textContent = date;
 }
 
+// ---- 確認ダイアログ ----
+function showConfirm(message, okLabel, danger) {
+  return new Promise(resolve => {
+    document.getElementById('modal-message').textContent = message;
+    const okBtn = document.getElementById('modal-ok');
+    okBtn.textContent = okLabel;
+    okBtn.className = 'btn' + (danger ? ' btn-danger' : '');
+    const overlay = document.getElementById('modal-overlay');
+    overlay.style.display = 'flex';
+    function finish(result) {
+      overlay.style.display = 'none';
+      okBtn.removeEventListener('click', onOk);
+      document.getElementById('modal-cancel').removeEventListener('click', onCancel);
+      document.removeEventListener('keydown', onKey);
+      resolve(result);
+    }
+    function onOk() { finish(true); }
+    function onCancel() { finish(false); }
+    function onKey(e) { if (e.key === 'Escape') finish(false); }
+    okBtn.addEventListener('click', onOk);
+    document.getElementById('modal-cancel').addEventListener('click', onCancel);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 // ---- ツールバー操作 ----
 async function changeMaxRows(n) {
   MAX_ROWS = n;
@@ -1083,7 +1132,7 @@ function toggleAutoScroll() {
 }
 
 async function clearLog() {
-  if (!confirm('Clear all log entries?')) return;
+  if (!await showConfirm('Clear all log entries?', 'Delete', true)) return;
   try {
     await fetch('/api/clear', { method: 'POST' });
   } catch (e) { /* ignore */ }
@@ -1102,7 +1151,7 @@ async function clearLog() {
 }
 
 async function exportCsv() {
-  if (!confirm('Export current log as CSV?')) return;
+  if (!await showConfirm('Export current log as CSV?', 'Export', false)) return;
   const btn = document.getElementById('btn-export');
   const origHtml = btn.innerHTML;
   try {
