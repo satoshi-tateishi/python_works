@@ -660,43 +660,43 @@ HTML_UI = """<!DOCTYPE html>
   <div class="header-left">
     <div class="port-dropdown" id="port-dropdown">
       <button class="btn" id="port-toggle" onclick="togglePortDropdown()">
-        ポート ▼ &nbsp;<span id="port-count-badge">--</span>
+        Ports ▼ &nbsp;<span id="port-count-badge">--</span>
       </button>
       <div class="port-panel" id="port-panel">
         <div id="port-list"></div>
       </div>
     </div>
-    <button class="btn btn-rescan" onclick="loadPorts()">再スキャン</button>
+    <button class="btn btn-rescan" onclick="loadPorts()">Rescan</button>
   </div>
 </header>
 
 <div class="main-content">
   <div class="left-panel">
     <div class="toolbar">
-      <button class="btn" id="btn-clear" onclick="clearLog()">クリア</button>
-      <button class="btn" id="btn-export" onclick="exportCsv()">CSV エクスポート</button>
+      <button class="btn" id="btn-clear" onclick="clearLog()">Clear</button>
+      <button class="btn" id="btn-export" onclick="exportCsv()">Export CSV</button>
       <button class="btn active" id="btn-raw-hex" onclick="toggleRawHex()">Raw Hex</button>
       <button class="btn autoscroll-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">
-        自動スクロール: ON
+        Auto Scroll
       </button>
       <select class="btn" id="sel-max-rows" onchange="changeMaxRows(parseInt(this.value))">
-        <option value="500">500件</option>
-        <option value="1000">1000件</option>
-        <option value="5000">5000件</option>
+        <option value="500">500 rows</option>
+        <option value="1000">1000 rows</option>
+        <option value="5000">5000 rows</option>
       </select>
       <input type="text" class="search-input" id="search-input" autocomplete="off"
-        placeholder="Q_number 検索..." oninput="onSearchInput(this.value)">
+        placeholder="Search Q_number..." oninput="onSearchInput(this.value)">
       <button class="btn" id="btn-search-clear" onclick="clearSearch()"
         style="display:none; padding:3px 7px;">&#10005;</button>
       <span id="search-count" style="display:none; color:var(--accent); font-size:12px;"></span>
-      <span class="count-badge" id="count-badge">0 件</span>
+      <span class="count-badge" id="count-badge">0 rows</span>
     </div>
     <div class="table-wrap" id="table-wrap">
       <table id="msg-table">
         <thead>
           <tr>
-            <th style="width:100px">時刻</th>
-            <th style="width:160px">ポート</th>
+            <th style="width:100px">Time</th>
+            <th style="width:160px">Port</th>
             <th style="width:70px">Dev ID</th>
             <th style="width:130px">Format</th>
             <th style="width:110px">Command</th>
@@ -708,7 +708,7 @@ HTML_UI = """<!DOCTYPE html>
         </thead>
         <tbody id="msg-tbody"></tbody>
       </table>
-      <div class="empty-msg" id="empty-msg">MSC メッセージを待機中...</div>
+      <div class="empty-msg" id="empty-msg">Waiting for MSC messages...</div>
     </div>
   </div>
   <div class="right-panel">
@@ -790,16 +790,16 @@ async function loadPorts() {
     const { ports } = await res.json();
     renderPorts(ports);
   } catch (e) {
-    console.error('ポート取得エラー', e);
+    console.error('Port fetch error', e);
   }
 }
 
 function updatePortBadge(connCount, total) {
   const badge = document.getElementById('port-count-badge');
   if (total === 0 || connCount === 0) {
-    badge.textContent = _fc(0x63a5, 0x7d9a, 0x306a, 0x3057); // 接続なし
+    badge.textContent = 'Not connected';
   } else {
-    badge.textContent = connCount + ' ' + _fc(0x63a5, 0x7d9a); // N接続
+    badge.textContent = connCount + ' connected';
   }
 }
 
@@ -810,7 +810,7 @@ function renderPorts(ports) {
   updatePortBadge(connCount, ports.length);
   if (ports.length === 0) {
     container.innerHTML =
-      '<div style="padding:8px 12px;color:#8090b0;font-size:12px;">利用可能なポートなし</div>';
+      '<div style="padding:8px 12px;color:#8090b0;font-size:12px;">No ports available</div>';
     return;
   }
   ports.forEach(p => {
@@ -869,7 +869,7 @@ async function togglePort(portName, checked, item) {
     ).length;
     updatePortBadge(checkedCount, total);
   } catch (e) {
-    console.error('ポート切替エラー', e);
+    console.error('Port toggle error', e);
   }
 }
 
@@ -974,7 +974,7 @@ function appendRow(row) {
       tr.classList.add('search-match');
     }
     const n = tbody.querySelectorAll('tr.search-match').length;
-    document.getElementById('search-count').textContent = n + ' ' + _fc(0x4ef6, 0x4e00, 0x81f4);
+    document.getElementById('search-count').textContent = n + ' matches';
   }
 
   if (autoScroll) {
@@ -993,24 +993,19 @@ function esc(str) {
 
 function updateCount() {
   const tbody = document.getElementById('msg-tbody');
-  document.getElementById('count-badge').textContent = tbody.rows.length + ' ' + _fc(0x4ef6);
+  document.getElementById('count-badge').textContent = tbody.rows.length + ' rows';
 }
 
 // ---- システム時計 ----
-const _fc = String.fromCharCode;
-const WEEKDAYS = [
-  _fc(0x65e5,0x66dc,0x65e5), _fc(0x6708,0x66dc,0x65e5), _fc(0x706b,0x66dc,0x65e5),
-  _fc(0x6c34,0x66dc,0x65e5), _fc(0x6728,0x66dc,0x65e5), _fc(0x91d1,0x66dc,0x65e5),
-  _fc(0x571f,0x66dc,0x65e5)
-];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function updateClock() {
   const now = new Date();
   const hm = String(now.getHours()).padStart(2, '0') + ':' +
     String(now.getMinutes()).padStart(2, '0');
   const sec = String(now.getSeconds()).padStart(2,'0');
-  const date = now.getFullYear() + _fc(0x5e74) +
-    (now.getMonth() + 1) + _fc(0x6708) +
-    now.getDate() + _fc(0x65e5) + ' ' + WEEKDAYS[now.getDay()];
+  const date = WEEKDAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' +
+    now.getDate() + ' ' + now.getFullYear();
   document.getElementById('clock-hm').textContent = hm;
   document.getElementById('clock-sec').textContent = sec;
   document.getElementById('clock-date').textContent = date;
@@ -1068,15 +1063,13 @@ function runSearch() {
     tr.classList.toggle('search-match', match);
     if (match) matchCount++;
   }
-  countEl.textContent = matchCount + ' ' + _fc(0x4ef6, 0x4e00, 0x81f4);
+  countEl.textContent = matchCount + ' matches';
   countEl.style.display = '';
 }
 
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
-  const btn = document.getElementById('btn-autoscroll');
-  btn.innerHTML = '自動スクロール: ' + (autoScroll ? 'ON' : 'OFF');
-  btn.className = 'btn autoscroll-btn' + (autoScroll ? ' active' : '');
+  document.getElementById('btn-autoscroll').classList.toggle('active', autoScroll);
 }
 
 async function clearLog() {
