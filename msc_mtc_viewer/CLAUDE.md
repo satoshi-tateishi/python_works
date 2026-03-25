@@ -14,7 +14,7 @@ Flask + pywebview + PyInstaller による macOS .app。
 - `midi_receiver.py` — python-rtmidi によるライブ MIDI ポート管理 + スレッドセーフ Queue。
 - `persistence.py` — 接続履歴・UI 設定を `settings.json` に保存・ロード。read-then-merge パターン。
 - `app.py` — Flask サーバー（スレッド）+ pywebview ネイティブウィンドウ。HTML/JS UI 埋め込み。
-- `build_app.py` — PyInstaller で `dist/MSC_MTC_Viewer.app` を生成。
+- `build_app.py` — PyInstaller で `dist/MSC_MTC_Viewer_{arch}.app` を生成（`--arch arm64|x86_64`）。
 - `config.json` — バージョン・ウィンドウサイズ等の設定を一元管理。`app.py` と `build_app.py` の両方から参照する。PyInstaller バンドルにも同梱される。
 
 ## 開発コマンド
@@ -270,11 +270,13 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 個別キーの保存が他のキーを破壊しない。
 
 ```python
-persistence.init(settings_dir)          # app.py 起動時に設定ディレクトリを初期化
-persistence.load_saved_ports()          # 保存済みポート名リスト → list[str]
-persistence.save_connected_ports(ports) # 接続中ポートを保存
-persistence.load_raw_hex_visible()      # Raw Hex 表示状態 → bool（デフォルト True）
-persistence.save_raw_hex_visible(bool)  # Raw Hex 表示状態を保存
+persistence.init(settings_dir)              # app.py 起動時に設定ディレクトリを初期化
+persistence.load_saved_ports()              # 保存済みポート名リスト → list[str]
+persistence.save_connected_ports(ports)     # 接続中ポートを保存
+persistence.load_raw_hex_visible()          # Raw Hex 表示状態 → bool（デフォルト True）
+persistence.save_raw_hex_visible(bool)      # Raw Hex 表示状態を保存
+persistence.load_max_display_rows()         # 最大表示件数 → int（デフォルト 500）
+persistence.save_max_display_rows(rows)     # 最大表示件数を保存
 ```
 
 ## config.json の構造
@@ -294,7 +296,7 @@ persistence.save_raw_hex_visible(bool)  # Raw Hex 表示状態を保存
   "window_min_height": 400,
   "window_x": null,            // null = OS デフォルト位置
   "window_y": null,
-  "max_log_rows": 500,         // ログバッファ最大行数
+  "max_log_rows": 5000,        // ログバッファ最大行数（サーバー側保持上限）
   "export_dir": "~/Downloads/MSC_MTC_Viewer_CSV",
   "settings_dir": "~/Library/Application Support/MSC_MTC_Viewer"
 }
