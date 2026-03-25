@@ -58,7 +58,7 @@ _log_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 QF_TIMEOUT_SEC = 0.25  # これより長く途切れたら QF 状態をリセット
 _qf_nibbles: list[int | None] = [None] * 8
-_qf_last_type: int | None = None    # 直前に受信した nibble_type
+_qf_last_type: int | None = None  # 直前に受信した nibble_type
 _qf_last_time: float | None = None  # 直前の QF 受信時刻 (monotonic)
 _mtc_lock = threading.Lock()
 
