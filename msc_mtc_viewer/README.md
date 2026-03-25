@@ -14,7 +14,7 @@ USB-MIDI インターフェースや IAC から受信した **MIDI Show Control 
 ### MIDI ポート管理
 - 接続中の USB-MIDI インターフェースおよび IAC をチェックボックスで複数選択可能
 - 「再スキャン」ボタンでポート一覧を更新
-- 前回使用したポートを起動時に自動接続（`~/Documents/MSC_MTC_Viewer/settings.json` に保存）
+- 前回使用したポートを起動時に自動接続（`~/Library/Application Support/MSC_MTC_Viewer/settings.json` に保存）
 
 ### MSC デコード
 受信した SysEx メッセージを解析し、以下の情報を表示する。
