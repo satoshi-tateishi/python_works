@@ -355,6 +355,8 @@ HTML_UI = """<!DOCTYPE html>
     background: var(--bg3);
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
+    display: flex;
+    align-items: center;
   }
   .main-content {
     flex: 1;
@@ -380,6 +382,12 @@ HTML_UI = """<!DOCTYPE html>
   .header-left {
     flex: 1;
     min-width: 0;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+  }
+  .header-right {
+    flex-shrink: 0;
     padding: 8px 16px;
     display: flex;
     align-items: center;
@@ -668,13 +676,15 @@ HTML_UI = """<!DOCTYPE html>
     </div>
     <button class="btn btn-rescan" onclick="loadPorts()">Rescan</button>
   </div>
+  <div class="header-right">
+    <button class="btn" id="btn-export" onclick="exportCsv()">Export CSV</button>
+  </div>
 </header>
 
 <div class="main-content">
   <div class="left-panel">
     <div class="toolbar">
       <button class="btn" id="btn-clear" onclick="clearLog()">Clear</button>
-      <button class="btn" id="btn-export" onclick="exportCsv()">Export CSV</button>
       <button class="btn active" id="btn-raw-hex" onclick="toggleRawHex()">Raw Hex</button>
       <button class="btn autoscroll-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">
         Auto Scroll
