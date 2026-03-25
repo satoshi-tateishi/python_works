@@ -1083,6 +1083,7 @@ function toggleAutoScroll() {
 }
 
 async function clearLog() {
+  if (!confirm('Clear all log entries?')) return;
   try {
     await fetch('/api/clear', { method: 'POST' });
   } catch (e) { /* ignore */ }
@@ -1101,6 +1102,7 @@ async function clearLog() {
 }
 
 async function exportCsv() {
+  if (!confirm('Export current log as CSV?')) return;
   const btn = document.getElementById('btn-export');
   const origHtml = btn.innerHTML;
   try {
