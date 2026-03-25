@@ -262,6 +262,7 @@ def api_settings():
         {
             "raw_hex_visible": persistence.load_raw_hex_visible(),
             "max_display_rows": persistence.load_max_display_rows(),
+            "export_dir": os.path.expanduser(EXPORT_DIR),
         }
     ).encode("ascii")
     return Response(body, content_type="application/json")
@@ -759,6 +760,7 @@ HTML_UI = """<!DOCTYPE html>
 <div id="modal-overlay">
   <div id="modal-box">
     <p id="modal-message"></p>
+    <p id="modal-sub" style="font-size:11px; color:var(--muted); word-break:break-all;"></p>
     <div id="modal-buttons">
       <button class="btn" id="modal-cancel">Cancel</button>
       <button class="btn" id="modal-ok">OK</button>
@@ -778,16 +780,18 @@ HTML_UI = """<!DOCTYPE html>
 let MAX_ROWS = 500;
 let autoScroll = true;
 let searchQuery = '';
+let exportDir = '';
 
 // ---- 設定ロード ----
 async function loadSettings() {
   try {
     const res = await fetch('/api/settings');
-    const { raw_hex_visible, max_display_rows } = await res.json();
+    const { raw_hex_visible, max_display_rows, export_dir } = await res.json();
     setRawHexVisible(raw_hex_visible);
     MAX_ROWS = max_display_rows || 500;
     const sel = document.getElementById('sel-max-rows');
     sel.value = String(MAX_ROWS);
+    exportDir = export_dir || '';
   } catch (e) {}
 }
 
@@ -1046,9 +1050,12 @@ function updateClock() {
 }
 
 // ---- 確認ダイアログ ----
-function showConfirm(message, okLabel, danger) {
+function showConfirm(message, okLabel, danger, sub) {
   return new Promise(resolve => {
     document.getElementById('modal-message').textContent = message;
+    const subEl = document.getElementById('modal-sub');
+    subEl.textContent = sub || '';
+    subEl.style.display = sub ? '' : 'none';
     const okBtn = document.getElementById('modal-ok');
     okBtn.textContent = okLabel;
     okBtn.className = 'btn' + (danger ? ' btn-danger' : '');
@@ -1151,7 +1158,7 @@ async function clearLog() {
 }
 
 async function exportCsv() {
-  if (!await showConfirm('Export current log as CSV?', 'Export', false)) return;
+  if (!await showConfirm('Export current log as CSV?', 'Export', false, exportDir)) return;
   const btn = document.getElementById('btn-export');
   const origHtml = btn.innerHTML;
   try {
