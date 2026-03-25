@@ -264,7 +264,7 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 
 ## settings.json 永続化（persistence.py）
 
-保存先: `config.json` の `settings_dir`（デフォルト: `~/Documents/MSC_MTC_Viewer/settings.json`）
+保存先: `config.json` の `settings_dir`（デフォルト: `~/Library/Application Support/MSC_MTC_Viewer/settings.json`）
 
 **read-then-merge パターン**: 保存時は既存 JSON を読み込んでからキーを上書きして書き直す。
 個別キーの保存が他のキーを破壊しない。
@@ -296,7 +296,7 @@ persistence.save_raw_hex_visible(bool)  # Raw Hex 表示状態を保存
   "window_y": null,
   "max_log_rows": 500,         // ログバッファ最大行数
   "export_dir": "~/Downloads/MSC_MTC_Viewer_CSV",
-  "settings_dir": "~/Documents/MSC_MTC_Viewer"
+  "settings_dir": "~/Library/Application Support/MSC_MTC_Viewer"
 }
 ```
 

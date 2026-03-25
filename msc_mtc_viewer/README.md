@@ -125,7 +125,7 @@ msc_mtc_viewer/
 ## 設定ファイル
 
 ```
-~/Documents/MSC_MTC_Viewer/settings.json
+~/Library/Application Support/MSC_MTC_Viewer/settings.json
 ```
 
 前回接続していたポート名・UI 設定を保存する。Finder から直接確認・編集可能。

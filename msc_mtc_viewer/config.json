@@ -14,5 +14,5 @@
   "window_y": null,
   "max_log_rows": 5000,
   "export_dir": "~/Downloads/MSC_MTC_Viewer_CSV",
-  "settings_dir": "~/Documents/MSC_MTC_Viewer"
+  "settings_dir": "~/Library/Application Support/MSC_MTC_Viewer"
 }
