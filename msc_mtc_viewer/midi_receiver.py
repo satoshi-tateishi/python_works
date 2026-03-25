@@ -5,6 +5,7 @@ python-rtmidi を使ってライブ MIDI 受信を行う。
 """
 
 import queue
+import threading
 
 import rtmidi
 
@@ -13,6 +14,8 @@ import rtmidi
 # ---------------------------------------------------------------------------
 _inputs: dict[str, rtmidi.MidiIn] = {}
 _message_queue: queue.Queue = queue.Queue(maxsize=2000)
+_dropped_count: int = 0  # キュー溢れで破棄されたメッセージ数
+_dropped_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +104,7 @@ def _make_callback(port_name: str):
     """port_name をキャプチャした rtmidi コールバック関数を返す。"""
 
     def callback(message, _data=None):
+        global _dropped_count
         raw = message[0]  # list[int]
         if not raw:
             return
@@ -109,12 +113,14 @@ def _make_callback(port_name: str):
             try:
                 _message_queue.put_nowait({"type": "qf", "port": port_name, "raw": raw})
             except queue.Full:
-                pass
+                with _dropped_lock:
+                    _dropped_count += 1
         elif raw[0] == 0xF0:
             try:
                 _message_queue.put_nowait({"type": "sysex", "port": port_name, "raw": raw})
             except queue.Full:
-                pass
+                with _dropped_lock:
+                    _dropped_count += 1
 
     return callback
 
@@ -132,6 +138,12 @@ def get_next_message(timeout: float = 0.5) -> dict | None:
         return _message_queue.get(timeout=timeout)
     except queue.Empty:
         return None
+
+
+def get_dropped_count() -> int:
+    """キュー溢れで破棄されたメッセージ数を返す。"""
+    with _dropped_lock:
+        return _dropped_count
 
 
 def drain_queue() -> list[dict]:

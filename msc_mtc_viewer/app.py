@@ -76,7 +76,7 @@ app.config["SECRET_KEY"] = "msc-monitor-secret"
 
 @app.route("/")
 def index():
-    return Response(_HTML_UI_BYTES, content_type="text/html")
+    return Response(_HTML_UI_BYTES, content_type="text/html; charset=utf-8")
 
 
 @app.route("/api/ports")
@@ -84,28 +84,40 @@ def api_ports():
     available = midi_receiver.get_available_ports()
     connected = set(midi_receiver.get_connected_ports())
     ports = [{"name": n, "connected": n in connected} for n in available]
-    # ensure_ascii=True（デフォルト）で \uXXXX エスケープ → 純粋 ASCII
-    body = json.dumps({"ports": ports}).encode("ascii")
-    return Response(body, content_type="application/json")
+    body = json.dumps({"ports": ports}, ensure_ascii=False).encode("utf-8")
+    return Response(body, content_type="application/json; charset=utf-8")
+
+
+_CT_JSON = {"Content-Type": "application/json"}
 
 
 @app.route("/api/ports/connect", methods=["POST"])
 def api_connect():
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return json.dumps({"ok": False, "error": "invalid JSON"}), 400, _CT_JSON
     port_name = data.get("port", "")
+    if not port_name:
+        return json.dumps({"ok": False, "error": "port name required"}), 400, _CT_JSON
     ok = midi_receiver.connect_port(port_name)
     if ok:
         persistence.save_connected_ports(midi_receiver.get_connected_ports())
-    return json.dumps({"ok": ok}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"ok": ok}), 200, _CT_JSON
 
 
 @app.route("/api/ports/disconnect", methods=["POST"])
 def api_disconnect():
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        return json.dumps({"ok": False, "error": "invalid JSON"}), 400, _CT_JSON
     port_name = data.get("port", "")
+    if not port_name:
+        return json.dumps({"ok": False, "error": "port name required"}), 400, _CT_JSON
     midi_receiver.disconnect_port(port_name)
     persistence.save_connected_ports(midi_receiver.get_connected_ports())
-    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"ok": True}), 200, _CT_JSON
 
 
 @app.route("/api/events")
@@ -125,9 +137,14 @@ def api_events():
 
                 if msg_type == "qf":
                     # MTC Quarter Frame: ニブルを蓄積し、8つ揃ったらタイムコードを復元
-                    data_byte = m["raw"][1]
+                    raw_qf = m["raw"]
+                    if len(raw_qf) < 2:
+                        continue
+                    data_byte = raw_qf[1]
                     nibble_type = (data_byte >> 4) & 0x07
                     nibble_val = data_byte & 0x0F
+                    if not (0 <= nibble_type <= 7):
+                        continue
                     with _mtc_lock:
                         _qf_nibbles[nibble_type] = nibble_val
                         if all(n is not None for n in _qf_nibbles):
@@ -136,6 +153,7 @@ def api_events():
                             minutes = ((_qf_nibbles[5] & 0x03) << 4) | _qf_nibbles[4]
                             hours = ((_qf_nibbles[7] & 0x01) << 4) | _qf_nibbles[6]
                             fps_code = (_qf_nibbles[7] >> 1) & 0x03
+                            _qf_nibbles[:] = [None] * 8  # 次のサイクルのためリセット
                             mtc_event = {
                                 "event_type": "mtc",
                                 "hours": hours,
@@ -205,7 +223,7 @@ def api_clear():
         _log_buffer.clear()
     # Queue も空にする
     midi_receiver.drain_queue()
-    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"ok": True}), 200, _CT_JSON
 
 
 @app.route("/api/export", methods=["POST"])
@@ -238,8 +256,8 @@ def api_export():
                 ]
             )
 
-    body = json.dumps({"ok": True, "filename": filename}).encode("ascii")
-    return Response(body, content_type="application/json")
+    body = json.dumps({"ok": True, "filename": filename}, ensure_ascii=False).encode("utf-8")
+    return Response(body, content_type="application/json; charset=utf-8")
 
 
 @app.route("/api/logs")
@@ -251,8 +269,8 @@ def api_logs():
         limit = 500
     with _log_lock:
         rows = list(_log_buffer[-limit:])
-    body = json.dumps({"rows": rows}).encode("ascii")
-    return Response(body, content_type="application/json")
+    body = json.dumps({"rows": rows}, ensure_ascii=False).encode("utf-8")
+    return Response(body, content_type="application/json; charset=utf-8")
 
 
 @app.route("/api/settings")
@@ -263,28 +281,35 @@ def api_settings():
             "raw_hex_visible": persistence.load_raw_hex_visible(),
             "max_display_rows": persistence.load_max_display_rows(),
             "export_dir": os.path.expanduser(EXPORT_DIR),
-        }
-    ).encode("ascii")
-    return Response(body, content_type="application/json")
+        },
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return Response(body, content_type="application/json; charset=utf-8")
 
 
 @app.route("/api/settings/raw_hex_visible", methods=["POST"])
 def api_save_raw_hex_visible():
     """Raw Hex 列の表示状態を保存する。"""
-    data = request.get_json(force=True)
+    try:
+        data = request.get_json(force=True) or {}
+    except Exception:
+        data = {}
     persistence.save_raw_hex_visible(bool(data.get("visible", True)))
-    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"ok": True}), 200, _CT_JSON
 
 
 @app.route("/api/settings/max_display_rows", methods=["POST"])
 def api_save_max_display_rows():
     """ログテーブルの最大表示件数を保存する。"""
-    data = request.get_json(force=True)
-    rows = int(data.get("rows", 500))
+    try:
+        data = request.get_json(force=True) or {}
+        rows = int(data.get("rows", 500))
+    except Exception:
+        rows = 500
     if rows not in (500, 1000, 5000):
         rows = 500
     persistence.save_max_display_rows(rows)
-    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"ok": True}), 200, _CT_JSON
 
 
 # ---------------------------------------------------------------------------
@@ -306,11 +331,13 @@ def _start_flask():
     _server.serve_forever()
 
 
-def _wait_for_server(timeout=10.0):
+def _wait_for_server(timeout=10.0, flask_thread=None):
     import socket
 
     deadline = time.time() + timeout
     while time.time() < deadline:
+        if flask_thread is not None and not flask_thread.is_alive():
+            raise RuntimeError("Flask スレッドが異常終了しました")
         try:
             with socket.create_connection(("127.0.0.1", _PORT), timeout=0.2):
                 return
@@ -1034,7 +1061,7 @@ function appendRow(row) {
   // 検索中は新規行に判定を適用し、トリム後の件数を更新
   if (searchQuery !== '') {
     const qCell = tr.querySelector('td.td-qnum');
-    if (qCell && qCell.textContent.includes(searchQuery)) {
+    if (qCell && qCell.textContent.toLowerCase().includes(searchQuery)) {
       tr.classList.add('search-match');
     }
     const n = tbody.querySelectorAll('tr.search-match').length;
@@ -1152,7 +1179,7 @@ function runSearch() {
   let matchCount = 0;
   for (const tr of tbody.querySelectorAll('tr')) {
     const qCell = tr.querySelector('td.td-qnum');
-    const match = qCell != null && qCell.textContent.includes(searchQuery);
+    const match = qCell != null && qCell.textContent.toLowerCase().includes(searchQuery);
     tr.classList.toggle('search-match', match);
     if (match) matchCount++;
   }
@@ -1236,7 +1263,7 @@ if __name__ == "__main__":
     if not _port_ready.wait(timeout=10.0):
         raise RuntimeError("Flask サーバーが起動しませんでした")
 
-    _wait_for_server()
+    _wait_for_server(flask_thread=t)
 
     # 前回接続していたポートを自動接続
     available = midi_receiver.get_available_ports()
