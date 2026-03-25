@@ -75,3 +75,16 @@ def save_raw_hex_visible(visible: bool) -> None:
     data = _load_all()
     data["raw_hex_visible"] = visible
     _save_all(data)
+
+
+def load_max_display_rows() -> int:
+    """ログテーブルの最大表示件数を返す。デフォルトは 500。"""
+    val = _load_all().get("max_display_rows", 500)
+    return int(val) if val in (500, 1000, 5000) else 500
+
+
+def save_max_display_rows(rows: int) -> None:
+    """ログテーブルの最大表示件数を保存する。"""
+    data = _load_all()
+    data["max_display_rows"] = rows
+    _save_all(data)

@@ -242,12 +242,26 @@ def api_export():
     return Response(body, content_type="application/json")
 
 
+@app.route("/api/logs")
+def api_logs():
+    """ログバッファの末尾 limit 件を返す。"""
+    try:
+        limit = int(request.args.get("limit", 500))
+    except (ValueError, TypeError):
+        limit = 500
+    with _log_lock:
+        rows = list(_log_buffer[-limit:])
+    body = json.dumps({"rows": rows}).encode("ascii")
+    return Response(body, content_type="application/json")
+
+
 @app.route("/api/settings")
 def api_settings():
-    """UI 設定（Raw Hex 表示状態など）を返す。"""
+    """UI 設定（Raw Hex 表示状態・最大表示件数など）を返す。"""
     body = json.dumps(
         {
             "raw_hex_visible": persistence.load_raw_hex_visible(),
+            "max_display_rows": persistence.load_max_display_rows(),
         }
     ).encode("ascii")
     return Response(body, content_type="application/json")
@@ -258,6 +272,17 @@ def api_save_raw_hex_visible():
     """Raw Hex 列の表示状態を保存する。"""
     data = request.get_json(force=True)
     persistence.save_raw_hex_visible(bool(data.get("visible", True)))
+    return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
+
+
+@app.route("/api/settings/max_display_rows", methods=["POST"])
+def api_save_max_display_rows():
+    """ログテーブルの最大表示件数を保存する。"""
+    data = request.get_json(force=True)
+    rows = int(data.get("rows", 500))
+    if rows not in (500, 1000, 5000):
+        rows = 500
+    persistence.save_max_display_rows(rows)
     return json.dumps({"ok": True}), 200, {"Content-Type": "application/json"}
 
 
@@ -504,6 +529,8 @@ HTML_UI = """<!DOCTYPE html>
   }
   .btn:hover { border-color: var(--accent); background: #1a2d50; }
   .btn-rescan { color: var(--accent); }
+  select.btn { padding: 3px 6px; }
+  select.btn option { background: #16213e; }
   .toolbar {
     display: flex;
     align-items: center;
@@ -639,6 +666,11 @@ HTML_UI = """<!DOCTYPE html>
       <button class="btn autoscroll-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">
         自動スクロール: ON
       </button>
+      <select class="btn" id="sel-max-rows" onchange="changeMaxRows(parseInt(this.value))">
+        <option value="500">500件</option>
+        <option value="1000">1000件</option>
+        <option value="5000">5000件</option>
+      </select>
       <span class="count-badge" id="count-badge">0 件</span>
     </div>
     <div class="table-wrap" id="table-wrap">
@@ -691,15 +723,18 @@ HTML_UI = """<!DOCTYPE html>
 </div>
 
 <script>
-const MAX_ROWS = 500;
+let MAX_ROWS = 500;
 let autoScroll = true;
 
 // ---- 設定ロード ----
 async function loadSettings() {
   try {
     const res = await fetch('/api/settings');
-    const { raw_hex_visible } = await res.json();
+    const { raw_hex_visible, max_display_rows } = await res.json();
     setRawHexVisible(raw_hex_visible);
+    MAX_ROWS = max_display_rows || 500;
+    const sel = document.getElementById('sel-max-rows');
+    sel.value = String(MAX_ROWS);
   } catch (e) {}
 }
 
@@ -957,6 +992,26 @@ function updateClock() {
 }
 
 // ---- ツールバー操作 ----
+async function changeMaxRows(n) {
+  MAX_ROWS = n;
+  // サーバーバッファから末尾 n 件を取得して再描画
+  try {
+    const res = await fetch('/api/logs?limit=' + n);
+    const { rows } = await res.json();
+    const tbody = document.getElementById('msg-tbody');
+    tbody.innerHTML = '';
+    rows.forEach(row => appendRow(row));
+  } catch (e) {}
+  // 設定を保存
+  try {
+    await fetch('/api/settings/max_display_rows', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows: n })
+    });
+  } catch (e) {}
+}
+
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
   const btn = document.getElementById('btn-autoscroll');
@@ -997,8 +1052,14 @@ async function exportCsv() {
 }
 
 // ---- 初期化 ----
-document.addEventListener('DOMContentLoaded', () => {
-  loadSettings();
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadSettings();
+  // 設定ロード後にバッファの初期ログを取得（ページリロード時に既存ログを復元）
+  try {
+    const res = await fetch('/api/logs?limit=' + MAX_ROWS);
+    const { rows } = await res.json();
+    rows.forEach(row => appendRow(row));
+  } catch (e) {}
   loadPorts();
   startSSE();
   updateClock();
