@@ -559,7 +559,7 @@ HTML_UI = """<!DOCTYPE html>
   .search-input:focus { border-color: var(--accent); }
   .search-input::placeholder { color: var(--muted); }
   tr.search-match td { background: #2a3f6f; }
-  .autoscroll-btn.active { color: var(--go); border-color: var(--go); }
+  .btn.active { color: var(--go); border-color: var(--go); }
   .table-wrap {
     flex: 1;
     overflow: auto;
@@ -675,7 +675,7 @@ HTML_UI = """<!DOCTYPE html>
     <div class="toolbar">
       <button class="btn" id="btn-clear" onclick="clearLog()">クリア</button>
       <button class="btn" id="btn-export" onclick="exportCsv()">CSV エクスポート</button>
-      <button class="btn" id="btn-raw-hex" onclick="toggleRawHex()">Raw Hex</button>
+      <button class="btn active" id="btn-raw-hex" onclick="toggleRawHex()">Raw Hex</button>
       <button class="btn autoscroll-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">
         自動スクロール: ON
       </button>
@@ -767,11 +767,7 @@ function setRawHexVisible(visible) {
 }
 
 function updateRawHexBtn(visible) {
-  const btn = document.getElementById('btn-raw-hex');
-  // "Raw Hex: 表示" / "Raw Hex: 非表示"
-  btn.textContent = 'Raw Hex: ' + (visible
-    ? _fc(0x8868, 0x793a)
-    : _fc(0x975e, 0x8868, 0x793a));
+  document.getElementById('btn-raw-hex').classList.toggle('active', visible);
 }
 
 async function toggleRawHex() {
