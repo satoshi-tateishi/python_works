@@ -509,6 +509,10 @@ HTML_UI = """<!DOCTYPE html>
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
   }
   .port-panel.open { display: block; }
+  .port-panel-rescan {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+  }
   .port-item {
     display: flex;
     align-items: center;
@@ -644,37 +648,54 @@ HTML_UI = """<!DOCTYPE html>
     background: var(--bg);
     border-top: 1px solid var(--border);
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
-    padding: 8px 0 10px;
+    padding: 6px 24px;
+    gap: 20px;
     user-select: none;
   }
+  .clock-left {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+  }
+  .clock-weekday {
+    font-size: 22px;
+    font-weight: 300;
+    color: #7878cc;
+    line-height: 1;
+  }
+  .clock-date {
+    font-size: 13px;
+    color: #6060aa;
+    letter-spacing: 0.3px;
+    line-height: 1;
+  }
   .clock-time {
+    flex: 0 0 auto;
     display: flex;
     align-items: baseline;
-    gap: 4px;
+    justify-content: center;
+    gap: 6px;
     line-height: 1;
     color: #7878cc;
   }
   .clock-hm {
-    font-size: 72px;
+    font-size: 100px;
     font-weight: 300;
-    letter-spacing: -2px;
+    letter-spacing: -3px;
     font-variant-numeric: tabular-nums;
   }
   .clock-sec {
-    font-size: 36px;
+    font-size: 50px;
     font-weight: 300;
     font-variant-numeric: tabular-nums;
     color: #6060aa;
-    margin-bottom: 4px;
-  }
-  .clock-date {
-    font-size: 16px;
-    color: #7878cc;
-    letter-spacing: 0.5px;
-    margin-top: 2px;
+    margin-bottom: 6px;
   }
 </style>
 </head>
@@ -686,10 +707,12 @@ HTML_UI = """<!DOCTYPE html>
         Ports ▼ &nbsp;<span id="port-count-badge">--</span>
       </button>
       <div class="port-panel" id="port-panel">
+        <div class="port-panel-rescan">
+          <button class="btn btn-rescan" onclick="loadPorts()">Rescan</button>
+        </div>
         <div id="port-list"></div>
       </div>
     </div>
-    <button class="btn btn-rescan" onclick="loadPorts()">Rescan</button>
   </div>
   <div class="header-right">
     <button class="btn" id="btn-export" onclick="exportCsv()">Export CSV</button>
@@ -769,11 +792,14 @@ HTML_UI = """<!DOCTYPE html>
 </div>
 
 <div class="clock-bar" id="clock-bar">
+  <div class="clock-left">
+    <div class="clock-weekday" id="clock-weekday"></div>
+    <div class="clock-date" id="clock-date"></div>
+  </div>
   <div class="clock-time">
     <span class="clock-hm" id="clock-hm">--:--</span>
     <span class="clock-sec" id="clock-sec">--</span>
   </div>
-  <div class="clock-date" id="clock-date"></div>
 </div>
 
 <script>
@@ -1042,10 +1068,11 @@ function updateClock() {
   const hm = String(now.getHours()).padStart(2, '0') + ':' +
     String(now.getMinutes()).padStart(2, '0');
   const sec = String(now.getSeconds()).padStart(2,'0');
-  const date = WEEKDAYS[now.getDay()] + ', ' + MONTHS[now.getMonth()] + ' ' +
-    now.getDate() + ' ' + now.getFullYear();
+  const weekday = WEEKDAYS[now.getDay()];
+  const date = MONTHS[now.getMonth()] + ' ' + now.getDate() + ', ' + now.getFullYear();
   document.getElementById('clock-hm').textContent = hm;
   document.getElementById('clock-sec').textContent = sec;
+  document.getElementById('clock-weekday').textContent = weekday;
   document.getElementById('clock-date').textContent = date;
 }
 
