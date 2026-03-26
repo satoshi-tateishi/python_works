@@ -68,9 +68,16 @@ MidiIn callback (port A/B)        get_next_message(timeout=0.5)   webview.start(
   (queue.Queue: スレッドセーフ)          │                         EventSource
                                         ▼                           appendRow() ← SSE "msc"/"mtc"
                                    keepalive (500ms 無通信時)       renderRows() ← MAX_ROWS 切替時
+
+ポート監視スレッド（port-monitor）
+─────────────────────────────────
+3 秒ごとに available / connected / saved_ports を比較
+  ├─ connected にあるが available にない → disconnect_port() でクリーンアップ
+  └─ saved_ports にあり available かつ未接続 → connect_port() で再接続
 ```
 
 - `queue.Queue` は rtmidi の C スレッドから安全に `put_nowait()` できる
+- `_log_buffer` は `collections.deque(maxlen=MAX_LOG_ROWS)` — 上限超過時に古い要素を自動削除
 - `_log_buffer` / `_qf_nibbles` の読み書きはそれぞれ `_log_lock` / `_mtc_lock` で保護
 - `drain_queue()` は `api_clear()` のみで使用（SSE ループでは使わない）
 - Flask ポートは `make_server('127.0.0.1', 0, app, threaded=True)` で動的割り当て（`threaded=True` 必須: SSE が単一スレッドを占有するため）

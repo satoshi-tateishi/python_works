@@ -13,6 +13,7 @@ import sys
 import threading
 import time
 import traceback
+from collections import deque
 
 import webview
 from flask import Flask, Response, request
@@ -51,7 +52,7 @@ persistence.init(_config.get("settings_dir", "~/Documents/MSC_MTC_Viewer"))
 # ログバッファ（最大 500 件）
 # ---------------------------------------------------------------------------
 MAX_LOG_ROWS = _config.get("max_log_rows", 500)
-_log_buffer: list[dict] = []
+_log_buffer: deque[dict] = deque(maxlen=MAX_LOG_ROWS)
 _log_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
@@ -297,8 +298,6 @@ def api_events():
                         row["event_type"] = "msc"
                         with _log_lock:
                             _log_buffer.append(row)
-                            if len(_log_buffer) > MAX_LOG_ROWS:
-                                _log_buffer.pop(0)
                         yield f"data: {json.dumps(row, ensure_ascii=False)}\n\n"
 
             except Exception:
@@ -366,7 +365,7 @@ def api_logs():
     except (ValueError, TypeError):
         limit = 500
     with _log_lock:
-        rows = list(_log_buffer[-limit:])
+        rows = list(_log_buffer)[-limit:]
     body = json.dumps({"rows": rows}, ensure_ascii=False).encode("utf-8")
     return Response(body, content_type="application/json; charset=utf-8")
 
@@ -408,6 +407,33 @@ def api_save_max_display_rows():
         rows = 500
     persistence.save_max_display_rows(rows)
     return json.dumps({"ok": True}), 200, _CT_JSON
+
+
+# ---------------------------------------------------------------------------
+# MIDI ポート監視（切断検知・自動再接続）
+# ---------------------------------------------------------------------------
+def _port_monitor() -> None:
+    """USB 抜き差し等による意図しない切断を検知し、利用可能になった時点で自動再接続する。"""
+    while True:
+        time.sleep(3.0)
+        try:
+            available = set(midi_receiver.get_available_ports())
+            connected = set(midi_receiver.get_connected_ports())
+
+            # 接続中だが利用不可能になったポートをクリーンアップ
+            for port in list(connected):
+                if port not in available:
+                    midi_receiver.disconnect_port(port)
+                    midi_receiver.drain_port_messages(port)
+                    with _mtc_lock:
+                        _reset_qf_state()
+
+            # 保存済みポートのうち利用可能で未接続のものを再接続
+            for port in persistence.load_saved_ports():
+                if port in available and port not in midi_receiver.get_connected_ports():
+                    midi_receiver.connect_port(port)
+        except Exception:
+            pass
 
 
 # ---------------------------------------------------------------------------
@@ -1127,7 +1153,8 @@ function startSSE() {
     }
   };
   evtSource.onerror = () => {
-    // 再接続は EventSource が自動で行う
+    evtSource.close();
+    setTimeout(startSSE, 3000);
   };
 }
 
@@ -1396,6 +1423,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   } catch (e) {}
   loadPorts();
   startSSE();
+  setInterval(loadPorts, 10000);
   updateClock();
   const msToNext = 1000 - new Date().getMilliseconds();
   setTimeout(() => { updateClock(); setInterval(updateClock, 1000); }, msToNext);
@@ -1427,6 +1455,9 @@ if __name__ == "__main__":
             raise RuntimeError("Flask サーバーが起動しませんでした")
 
         _wait_for_server(flask_thread=t)
+
+        # ポート監視スレッド起動（切断検知・自動再接続）
+        threading.Thread(target=_port_monitor, daemon=True, name="port-monitor").start()
 
         # 前回接続していたポートを自動接続
         available = midi_receiver.get_available_ports()

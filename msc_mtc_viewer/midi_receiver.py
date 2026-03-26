@@ -16,6 +16,7 @@ _inputs: dict[str, rtmidi.MidiIn] = {}
 _message_queue: queue.Queue = queue.Queue(maxsize=2000)
 _dropped_count: int = 0  # キュー溢れで破棄されたメッセージ数
 _dropped_lock = threading.Lock()
+_scanner: rtmidi.MidiIn = rtmidi.MidiIn()  # ポートスキャン専用（ポートは開かない）
 
 
 # ---------------------------------------------------------------------------
@@ -42,10 +43,7 @@ def _fix_port_name(name: str) -> str:
 # ---------------------------------------------------------------------------
 def get_available_ports() -> list[str]:
     """現在利用可能な MIDI 入力ポート名の一覧を返す。"""
-    tmp = rtmidi.MidiIn()
-    ports = [_fix_port_name(p) for p in tmp.get_ports()]
-    del tmp
-    return ports
+    return [_fix_port_name(p) for p in _scanner.get_ports()]
 
 
 def get_connected_ports() -> list[str]:
@@ -87,7 +85,10 @@ def disconnect_port(port_name: str) -> None:
     """指定したポートとの接続を閉じる。"""
     midi_in = _inputs.pop(port_name, None)
     if midi_in is not None:
-        midi_in.close_port()
+        try:
+            midi_in.close_port()
+        except Exception:
+            pass
         del midi_in
 
 
@@ -158,3 +159,20 @@ def drain_queue() -> list[dict]:
         except queue.Empty:
             break
     return items
+
+
+def drain_port_messages(port_name: str) -> None:
+    """指定ポートからのメッセージをキューから除去する。他ポートのメッセージは保持する。"""
+    kept: list[dict] = []
+    while True:
+        try:
+            item = _message_queue.get_nowait()
+            if item.get("port") != port_name:
+                kept.append(item)
+        except queue.Empty:
+            break
+    for item in kept:
+        try:
+            _message_queue.put_nowait(item)
+        except queue.Full:
+            break
