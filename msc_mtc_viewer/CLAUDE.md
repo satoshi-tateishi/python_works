@@ -14,8 +14,9 @@ Flask + pywebview + PyInstaller による macOS .app。
 - `midi_receiver.py` — python-rtmidi によるライブ MIDI ポート管理 + スレッドセーフ Queue。
 - `persistence.py` — 接続履歴・UI 設定を `settings.json` に保存・ロード。read-then-merge パターン。
 - `app.py` — Flask サーバー（スレッド）+ pywebview ネイティブウィンドウ。HTML/JS UI 埋め込み。
-- `build_app.py` — PyInstaller で `dist/MSC_MTC_Viewer_{arch}.app` を生成（`--arch arm64|x86_64`）。
+- `build_app.py` — PyInstaller で `dist/MSC_MTC_Viewer_{arch}.app` を生成（`--arch arm64|x86_64|x86_64_1013_py312`）。
 - `config.json` — バージョン・ウィンドウサイズ等の設定を一元管理。`app.py` と `build_app.py` の両方から参照する。PyInstaller バンドルにも同梱される。
+- `build/` — 社内配布用パッケージ（Apple Silicon / Intel / Intel 10.13.6）と受け手向け README。
 
 ## 開発コマンド
 
@@ -23,7 +24,8 @@ Flask + pywebview + PyInstaller による macOS .app。
 # 初回セットアップ
 bash setup.sh            # arm64 (.venv) のみ
 bash setup.sh --x86      # x86_64 (.venv_x86) のみ（Rosetta 2 経由）
-bash setup.sh --all      # 両方
+bash setup.sh --x86-1013-py312  # macOS 10.13.6 向け Intel (.venv_x86_1013_py312)
+bash setup.sh --all      # arm64 と x86_64
 
 # 起動
 .venv/bin/python app.py
@@ -36,7 +38,17 @@ bash setup.sh --all      # 両方
 .venv/bin/python build_app.py                  # arm64 と x86_64 を両方ビルド
 .venv/bin/python build_app.py --arch arm64     # Apple Silicon 専用
 .venv/bin/python build_app.py --arch x86_64   # Intel 専用（.venv_x86 が必要）
+.venv/bin/python build_app.py --arch x86_64_1013_py312  # Intel macOS 10.13.6 専用
 ```
+
+## 現行の配布系統
+
+- Apple Silicon: `dist/MSC_MTC_Viewer_arm64.app` → `build/apple_silicon_package/`
+- Intel Mac: `dist/MSC_MTC_Viewer_x86_64.app` → `build/intel_mac_package/`
+- Intel Mac 10.13.6: `dist/MSC_MTC_Viewer_x86_64_1013_py312.app` → `build/intel_mac_1013_package/`
+
+インストーラは Automator で作成した `Install_*.app` を使う。Terminal スクリプト運用は廃止。
+10.13.6 対応は Python 3.12 + `python-rtmidi` の公式 x86_64 wheel 前提。
 
 ## コーディングルール
 

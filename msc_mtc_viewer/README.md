@@ -5,7 +5,8 @@ USB-MIDI インターフェースや IAC から受信した **MIDI Show Control 
 ## 対応環境
 
 - macOS（Intel / Apple Silicon）
-- Python 3.13（ビルドには python.org 版 Python 3.13 必須）
+- Python 3.13
+- macOS 10.13.6 向け Intel ビルドのみ Python 3.12 を併用
 
 ---
 
@@ -66,15 +67,18 @@ bash setup.sh
 # x86_64（Intel）用のみ
 bash setup.sh --x86
 
-# 両方
+# x86_64（macOS 10.13.6 向け / Python 3.12 系）用のみ
+bash setup.sh --x86-1013-py312
+
+# arm64 と Intel の標準ビルド用
 bash setup.sh --all
 
 # 起動
 .venv/bin/python app.py
 ```
 
-> python.org 版 Python 3.13（universal2）が必要。
-> `/Library/Frameworks/Python.framework/Versions/3.13/bin/python3` にインストールされている前提。
+> 標準ビルドには python.org 版 Python 3.13（universal2）が必要。
+> macOS 10.13.6 向け Intel ビルドには python.org 版 Python 3.12 も必要。
 
 ---
 
@@ -87,7 +91,10 @@ bash setup.sh --all
 # x86_64（Intel）用（事前に bash setup.sh --x86 が必要）
 .venv/bin/python build_app.py --arch x86_64
 
-# 両方
+# x86_64（macOS 10.13.6 向け / Python 3.12 系、事前に bash setup.sh --x86-1013-py312 が必要）
+.venv/bin/python build_app.py --arch x86_64_1013_py312
+
+# arm64 と Intel の標準ビルド
 .venv/bin/python build_app.py
 ```
 
@@ -95,9 +102,30 @@ bash setup.sh --all
 |---|---|
 | `dist/MSC_MTC_Viewer_arm64.app` | Apple Silicon Mac |
 | `dist/MSC_MTC_Viewer_x86_64.app` | Intel Mac |
+| `dist/MSC_MTC_Viewer_x86_64_1013_py312.app` | Intel Mac（macOS 10.13.6 向け / Python 3.12 系） |
 
 > `python-rtmidi 1.5.8` は meson-python ベースのため universal2 ビルド非対応。
 > アーキテクチャ別に個別ファイルを配布する。
+> `x86_64_1013_py312` は Python 3.12 で `python-rtmidi` の公式 x86_64 wheel を使う前提の追加系統。
+
+## 社内配布
+
+- Apple Silicon 用パッケージ: `build/apple_silicon_package/`
+- Intel Mac 用パッケージ: `build/intel_mac_package/`
+- Intel Mac 10.13.6 用パッケージ: `build/intel_mac_1013_package/`
+
+各フォルダには配布用 `.app`、`Install_*.app`、受け手向け `README.md` を置く。
+インストーラは同じフォルダ内の本体 `.app` を Desktop にコピーし、`com.apple.quarantine` を外して起動する。
+
+### 起動トラブル時のログ確認
+
+- Finder から `.app` が即終了した場合は `~/Library/Logs/MSC_MTC_Viewer/launch.log` を確認する
+- ターミナルから直接起動して標準エラーも確認できる
+
+```bash
+dist/MSC_MTC_Viewer_x86_64.app/Contents/MacOS/MSC_MTC_Viewer_x86_64
+dist/MSC_MTC_Viewer_x86_64_1013_py312.app/Contents/MacOS/MSC_MTC_Viewer_x86_64_1013_py312
+```
 
 ---
 
@@ -112,10 +140,12 @@ msc_mtc_viewer/
 ├── config.json       # アプリ設定（バージョン、ウィンドウサイズ等）
 ├── requirements.txt  # 依存パッケージ
 ├── pyproject.toml    # Ruff 設定
-├── setup.sh          # venv 作成（--x86 / --all オプションあり）
-├── build_app.py      # PyInstaller ビルドスクリプト（--arch arm64|x86_64）
+├── setup.sh          # venv 作成（--x86 / --x86-1013-py312 / --all）
+├── build_app.py      # PyInstaller ビルドスクリプト（--arch arm64|x86_64|x86_64_1013_py312）
 ├── .venv/            # arm64 用 Python 環境
 ├── .venv_x86/        # x86_64 用 Python 環境（setup.sh --x86 で作成）
+├── .venv_x86_1013_py312/ # macOS 10.13.6 向け x86_64 / Python 3.12 環境
+├── build/            # 配布パッケージと配布メモ
 ├── CLAUDE.md         # 開発者向けドキュメント
 └── README.md         # 本ファイル
 ```

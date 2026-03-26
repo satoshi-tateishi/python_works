@@ -6,6 +6,8 @@ MIDI MSC Monitor macOS アプリビルドスクリプト
   .venv/bin/python build_app.py               # arm64 と x86_64 を順番にビルド
   .venv/bin/python build_app.py --arch arm64  # arm64 (.venv) のみ
   .venv/bin/python build_app.py --arch x86_64 # x86_64 (.venv_x86) のみ
+  .venv/bin/python build_app.py --arch x86_64_1013_py312
+      # macOS 10.13.6 向け x86_64 / Python 3.12 (.venv_x86_1013_py312) のみ
 """
 
 import argparse
@@ -37,11 +39,22 @@ ARCH_CONFIGS = {
         "venv": CURRENT_DIR / ".venv",
         "target_arch": "arm64",
         "app_name": f"{APP_NAME}_arm64",
+        "setup_hint": "bash setup.sh",
+        "extra_env": {},
     },
     "x86_64": {
         "venv": CURRENT_DIR / ".venv_x86",
         "target_arch": "x86_64",
         "app_name": f"{APP_NAME}_x86_64",
+        "setup_hint": "bash setup.sh --x86",
+        "extra_env": {},
+    },
+    "x86_64_1013_py312": {
+        "venv": CURRENT_DIR / ".venv_x86_1013_py312",
+        "target_arch": "x86_64",
+        "app_name": f"{APP_NAME}_x86_64_1013_py312",
+        "setup_hint": "bash setup.sh --x86-1013-py312",
+        "extra_env": {},
     },
 }
 
@@ -132,7 +145,7 @@ def build_arch(arch: str) -> bool:
 
     if not venv.exists():
         print(f"⚠️  {arch} 用の venv が見つかりません ({venv})")
-        hint = "bash setup.sh --x86" if arch == "x86_64" else "bash setup.sh"
+        hint = cfg["setup_hint"]
         print(f"   先に '{hint}' を実行してください。\n")
         return False
 
@@ -171,8 +184,13 @@ def build_arch(arch: str) -> bool:
     try:
         # アーキテクチャ専用 venv の pyinstaller をサブプロセスで実行
         # x86_64 は Rosetta 2 経由で arch -x86_64 を付けて呼ぶ
-        cmd = ["arch", "-x86_64", str(pyinstaller)] if arch == "x86_64" else [str(pyinstaller)]
-        subprocess.run(cmd + args, cwd=CURRENT_DIR, check=True)
+        env = os.environ.copy()
+        env.update(cfg.get("extra_env", {}))
+        if arch.startswith("x86_64"):
+            cmd = ["arch", "-x86_64", str(pyinstaller)]
+        else:
+            cmd = [str(pyinstaller)]
+        subprocess.run(cmd + args, cwd=CURRENT_DIR, check=True, env=env)
     except Exception:
         traceback.print_exc()
         print(f"\n❌ {arch} ビルドエラー\n")
@@ -202,7 +220,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="MSC_MTC_Viewer ビルドスクリプト")
     parser.add_argument(
         "--arch",
-        choices=["arm64", "x86_64"],
+        choices=["arm64", "x86_64", "x86_64_1013_py312"],
         default=None,
         help="ビルド対象アーキテクチャ（省略時は両方）",
     )

@@ -2,12 +2,19 @@
 __pycache__/
 *.py[cod]
 *.pyo
-.venv/
+.venv*/
 
 # PyInstaller
 build/
 dist/
 *.spec
+
+!build/
+build/*
+!build/README.md
+!build/*/
+build/*/*
+!build/*/README.md
 
 # macOS
 .DS_Store

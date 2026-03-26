@@ -8,6 +8,7 @@ import csv
 import datetime
 import json
 import os
+import platform
 import sys
 import threading
 import time
@@ -69,6 +70,58 @@ _mtc_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # (HTML_UI は後方で定義されるため、モジュール末尾で _HTML_UI_BYTES を設定する)
 _HTML_UI_BYTES: bytes = b""
+
+# ---------------------------------------------------------------------------
+# 起動診断ログ
+# ---------------------------------------------------------------------------
+_LOG_DIR = os.path.expanduser(f"~/Library/Logs/{APP_NAME}")
+_LOG_PATH = os.path.join(_LOG_DIR, "launch.log")
+_startup_error: str | None = None
+_startup_lock = threading.Lock()
+
+
+def _log_launch(message: str) -> None:
+    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {message}"
+    try:
+        print(line, file=sys.stderr, flush=True)
+    except Exception:
+        pass
+    try:
+        os.makedirs(_LOG_DIR, exist_ok=True)
+        with open(_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
+
+
+def _record_startup_error(message: str) -> None:
+    global _startup_error
+    with _startup_lock:
+        _startup_error = message
+    _log_launch(message)
+
+
+def _get_startup_error() -> str | None:
+    with _startup_lock:
+        return _startup_error
+
+
+def _init_launch_log() -> None:
+    try:
+        os.makedirs(_LOG_DIR, exist_ok=True)
+        with open(_LOG_PATH, "w", encoding="utf-8") as f:
+            f.write("")
+    except Exception:
+        pass
+    _log_launch("Launch start")
+    _log_launch(f"Python: {sys.version}")
+    _log_launch(f"Machine: {platform.machine()}")
+    _log_launch(f"Platform: {platform.platform()}")
+    _log_launch(f"Executable: {sys.executable}")
+    _log_launch(f"_MEIPASS: {getattr(sys, '_MEIPASS', '(not set)')}")
+    _log_launch(f"Config port: {FLASK_PORT}")
+
 
 # ---------------------------------------------------------------------------
 # Flask アプリ
@@ -369,11 +422,16 @@ _port_ready = threading.Event()
 
 def _start_flask():
     global _server, _PORT
-    _server = make_server("127.0.0.1", FLASK_PORT, app, threaded=True)
-    _PORT = _server.socket.getsockname()[1]
-    print(f"Flask server: http://127.0.0.1:{_PORT}/", flush=True)
-    _port_ready.set()
-    _server.serve_forever()
+    try:
+        _log_launch("Creating Flask server on 127.0.0.1")
+        _server = make_server("127.0.0.1", FLASK_PORT, app, threaded=True)
+        _PORT = _server.socket.getsockname()[1]
+        _log_launch(f"Flask server ready: http://127.0.0.1:{_PORT}/")
+        _port_ready.set()
+        _server.serve_forever()
+    except Exception:
+        _record_startup_error("Flask startup failed:\n" + traceback.format_exc())
+        _port_ready.set()
 
 
 def _wait_for_server(timeout=10.0, flask_thread=None):
@@ -382,12 +440,18 @@ def _wait_for_server(timeout=10.0, flask_thread=None):
     deadline = time.time() + timeout
     while time.time() < deadline:
         if flask_thread is not None and not flask_thread.is_alive():
+            detail = _get_startup_error()
+            if detail:
+                raise RuntimeError(f"Flask スレッドが異常終了しました\n{detail}")
             raise RuntimeError("Flask スレッドが異常終了しました")
         try:
             with socket.create_connection(("127.0.0.1", _PORT), timeout=0.2):
                 return
         except OSError:
             time.sleep(0.05)
+    detail = _get_startup_error()
+    if detail:
+        raise RuntimeError(f"Flask サーバーが起動しませんでした\n{detail}")
     raise RuntimeError("Flask サーバーが起動しませんでした")
 
 
@@ -1349,39 +1413,50 @@ _HTML_UI_BYTES = HTML_UI.encode("ascii", "xmlcharrefreplace")
 # エントリポイント
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    # Flask を別スレッドで起動
-    t = threading.Thread(target=_start_flask, daemon=True)
-    t.start()
+    _init_launch_log()
+    try:
+        # Flask を別スレッドで起動
+        t = threading.Thread(target=_start_flask, daemon=True)
+        t.start()
 
-    # ポートが確定するまで待つ（make_server はスレッド内でバインドするため）
-    if not _port_ready.wait(timeout=10.0):
-        raise RuntimeError("Flask サーバーが起動しませんでした")
+        # ポートが確定するまで待つ（make_server はスレッド内でバインドするため）
+        if not _port_ready.wait(timeout=10.0):
+            detail = _get_startup_error()
+            if detail:
+                raise RuntimeError(f"Flask サーバーが起動しませんでした\n{detail}")
+            raise RuntimeError("Flask サーバーが起動しませんでした")
 
-    _wait_for_server(flask_thread=t)
+        _wait_for_server(flask_thread=t)
 
-    # 前回接続していたポートを自動接続
-    available = midi_receiver.get_available_ports()
-    for port_name in persistence.load_saved_ports():
-        if port_name in available:
-            midi_receiver.connect_port(port_name)
+        # 前回接続していたポートを自動接続
+        available = midi_receiver.get_available_ports()
+        for port_name in persistence.load_saved_ports():
+            if port_name in available:
+                midi_receiver.connect_port(port_name)
 
-    # pywebview ウィンドウ作成
-    kwargs = {
-        "title": APP_NAME,
-        "url": f"http://127.0.0.1:{_PORT}/",
-        "width": WINDOW_WIDTH,
-        "resizable": True,
-        "min_size": (WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
-    }
-    if WINDOW_HEIGHT is not None:
-        kwargs["height"] = WINDOW_HEIGHT
-    if WINDOW_X is not None:
-        kwargs["x"] = WINDOW_X
-    if WINDOW_Y is not None:
-        kwargs["y"] = WINDOW_Y
+        # pywebview ウィンドウ作成
+        kwargs = {
+            "title": APP_NAME,
+            "url": f"http://127.0.0.1:{_PORT}/",
+            "width": WINDOW_WIDTH,
+            "resizable": True,
+            "min_size": (WINDOW_MIN_WIDTH, WINDOW_MIN_HEIGHT),
+        }
+        if WINDOW_HEIGHT is not None:
+            kwargs["height"] = WINDOW_HEIGHT
+        if WINDOW_X is not None:
+            kwargs["x"] = WINDOW_X
+        if WINDOW_Y is not None:
+            kwargs["y"] = WINDOW_Y
 
-    window = webview.create_window(**kwargs)
-    webview.start(lambda: window.maximize() if WINDOW_MAXIMIZE else None)
-
-    # ウィンドウが閉じられたら MIDI ポートを切断して終了
-    midi_receiver.disconnect_all()
+        _log_launch("Creating webview window")
+        window = webview.create_window(**kwargs)
+        _log_launch("Starting webview event loop")
+        webview.start(lambda: window.maximize() if WINDOW_MAXIMIZE else None)
+        _log_launch("Webview event loop exited")
+    except Exception:
+        _record_startup_error("Application startup failed:\n" + traceback.format_exc())
+        raise
+    finally:
+        # ウィンドウが閉じられたら MIDI ポートを切断して終了
+        midi_receiver.disconnect_all()
