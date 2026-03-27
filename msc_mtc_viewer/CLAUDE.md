@@ -264,7 +264,7 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 | POST | `/api/ports/disconnect` | ポート切断 `{"port": "..."}` |
 | GET | `/api/events` | SSE（リアルタイム配信、500ms keepalive）|
 | POST | `/api/clear` | ログバッファ・QF 状態クリア（Queue も空にする） |
-| POST | `/api/export` | CSV ダウンロード（`msc_log_YYYYMMDD_HHMMSS.csv`） |
+| POST | `/api/export` | 標準ビルド用 CSV 保存（`msc_log_YYYYMMDD_HHMMSS.csv`）。10.13 用は未使用 |
 | GET | `/api/logs?limit=N` | ログバッファ末尾 N 件を返す（`renderRows()` が使用） |
 | GET | `/api/settings` | UI 設定取得（`raw_hex_visible` 等） |
 | POST | `/api/settings/raw_hex_visible` | Raw Hex 列表示状態を保存 `{"visible": bool}` |
@@ -484,12 +484,8 @@ WKWebView が `http://127.0.0.1` へ確実に接続できるよう、`fix_plist(
 
 ### macOS 10.13 向け UI 制限
 
-`x86_64_1013_py312` ビルドでは `Export CSV` ボタンを非表示にする。
-この制限は `app.py` 側では持たず、`app_1013.py` が HTML を差し替えて適用する。
-通常の開発実行（`python app.py`）や他ビルドには適用しない。
-
-### macOS 10.13 向け専用エントリーポイント
-
 `x86_64_1013_py312` ビルドだけは `app.py` ではなく `app_1013.py` を PyInstaller の入力に使う。
-`app_1013.py` は `app` モジュールを import した上で、MSC ログテーブルの CSS と `Export CSV` ボタン表示だけを 10.13 向けに差し替えてから `run_app()` を呼ぶ。
+`app_1013.py` は `app` モジュールを import した上で、MSC ログテーブルの CSS と `Export CSV` の実装を 10.13 向けに差し替えてから `run_app()` を呼ぶ。
+`Export CSV` は `/api/export` を使わず、pywebview の JS-Python bridge とネイティブ保存ダイアログで保存する。
+保存先候補の初期ディレクトリは `EXPORT_DIR`、初期ファイル名は `msc_log_YYYYMMDD_HHMMSS.csv`。
 通常ビルドは従来どおり `app.py` を使う。

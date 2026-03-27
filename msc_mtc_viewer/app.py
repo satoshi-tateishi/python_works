@@ -323,17 +323,18 @@ def api_clear():
     return json.dumps({"ok": True}), 200, _CT_JSON
 
 
-@app.route("/api/export", methods=["POST"])
-def api_export():
-    """ログバッファを ~/Downloads/ に CSV として保存する。"""
+def _get_export_rows() -> list[dict]:
     with _log_lock:
-        rows = list(_log_buffer)
+        return list(_log_buffer)
 
-    filename = datetime.datetime.now().strftime("msc_log_%Y%m%d_%H%M%S.csv")
-    export_dir = os.path.expanduser(EXPORT_DIR)
-    os.makedirs(export_dir, exist_ok=True)
-    filepath = os.path.join(export_dir, filename)
 
+def _get_export_filename() -> str:
+    return datetime.datetime.now().strftime("msc_log_%Y%m%d_%H%M%S.csv")
+
+
+def _write_csv_export(filepath: str, rows: list[dict] | None = None) -> None:
+    if rows is None:
+        rows = _get_export_rows()
     with open(filepath, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(
@@ -353,6 +354,15 @@ def api_export():
                 ]
             )
 
+
+@app.route("/api/export", methods=["POST"])
+def api_export():
+    """ログバッファを ~/Downloads/ に CSV として保存する。"""
+    filename = _get_export_filename()
+    export_dir = os.path.expanduser(EXPORT_DIR)
+    os.makedirs(export_dir, exist_ok=True)
+    filepath = os.path.join(export_dir, filename)
+    _write_csv_export(filepath)
     body = json.dumps({"ok": True, "filename": filename}, ensure_ascii=False).encode("utf-8")
     return Response(body, content_type="application/json; charset=utf-8")
 
@@ -1441,7 +1451,7 @@ _HTML_UI_BYTES = HTML_UI.encode("ascii", "xmlcharrefreplace")
 # ---------------------------------------------------------------------------
 # エントリポイント
 # ---------------------------------------------------------------------------
-def run_app() -> None:
+def run_app(js_api=None) -> None:
     """アプリ本体を起動する。"""
     _init_launch_log()
     try:
@@ -1481,9 +1491,13 @@ def run_app() -> None:
             kwargs["x"] = WINDOW_X
         if WINDOW_Y is not None:
             kwargs["y"] = WINDOW_Y
+        if js_api is not None:
+            kwargs["js_api"] = js_api
 
         _log_launch("Creating webview window")
         window = webview.create_window(**kwargs)
+        if js_api is not None and hasattr(js_api, "set_window"):
+            js_api.set_window(window)
         _log_launch("Starting webview event loop")
         webview.start(lambda: window.maximize() if WINDOW_MAXIMIZE else None)
         _log_launch("Webview event loop exited")

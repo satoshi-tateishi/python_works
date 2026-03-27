@@ -54,6 +54,7 @@
 ### Intel Mac 10.13.6
 
 1. `MSC_MTC_Viewer_x86_64_1013_py312.app` をダブルクリックする（インストーラ不要）
+2. `Export CSV` は macOS の保存ダイアログが開くので、保存先を選んで保存する
 
 ## Automator で作るインストーラ
 

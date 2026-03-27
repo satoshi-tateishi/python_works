@@ -1,17 +1,11 @@
 """
 MSC_MTC_Viewer macOS 10.13 専用エントリーポイント
-WKWebView 互換性のため、MSC ログテーブルの sticky header 実装だけ差し替える。
+WKWebView 互換性のため、MSC ログテーブルの sticky header と Export CSV を差し替える。
 """
 
-import app as base
+import os
 
-_EXPORT_BUTTON_OLD = (
-    '    <button class="btn" id="btn-export" onclick="exportCsv()">Export CSV</button>'
-)
-_EXPORT_BUTTON_NEW = (
-    '    <button class="btn" id="btn-export" onclick="exportCsv()" style="display:none">'
-    "Export CSV</button>"
-)
+import app as base
 
 _TABLE_STYLE_OLD = """  .table-wrap {
     flex: 1;
@@ -92,17 +86,91 @@ _TABLE_STYLE_NEW = """  .table-wrap {
   }
 """
 
+_EXPORT_JS_OLD = """async function exportCsv() {
+  if (!await showConfirm('Export current log as CSV?', 'Export', false, exportDir)) return;
+  const btn = document.getElementById('btn-export');
+  const origHtml = btn.innerHTML;
+  try {
+    const res = await fetch('/api/export', { method: 'POST' });
+    const { filename } = await res.json();
+    // ✓ + ファイル名を表示（3秒後に元に戻す）
+    btn.innerHTML = '&#10003; ' + filename;
+    setTimeout(() => { btn.innerHTML = origHtml; }, 3000);
+  } catch (e) {
+    btn.innerHTML = '&#10007; error';
+    setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
+  }
+}
+"""
+
+_EXPORT_JS_NEW = """async function exportCsv() {
+  if (!await showConfirm('Export current log as CSV?', 'Export', false, exportDir)) return;
+  const btn = document.getElementById('btn-export');
+  const origHtml = btn.innerHTML;
+  try {
+    if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.export_csv) {
+      throw new Error('pywebview api is not ready');
+    }
+    const result = await window.pywebview.api.export_csv();
+    if (!result || result.cancelled) {
+      return;
+    }
+    if (!result.ok) {
+      throw new Error(result.error || 'export failed');
+    }
+    btn.innerHTML = '&#10003; ' + (result.filename || 'saved');
+    setTimeout(() => { btn.innerHTML = origHtml; }, 3000);
+  } catch (e) {
+    btn.innerHTML = '&#10007; error';
+    setTimeout(() => { btn.innerHTML = origHtml; }, 2000);
+  }
+}
+"""
+
+
+class ExportApi:
+    def __init__(self) -> None:
+        self.window = None
+
+    def set_window(self, window) -> None:
+        self.window = window
+
+    def export_csv(self) -> dict:
+        if self.window is None:
+            return {"ok": False, "error": "window not ready"}
+
+        filename = base._get_export_filename()
+        export_dir = os.path.expanduser(base.EXPORT_DIR)
+        os.makedirs(export_dir, exist_ok=True)
+
+        result = self.window.create_file_dialog(
+            base.webview.FileDialog.SAVE,
+            directory=export_dir,
+            save_filename=filename,
+            file_types=("CSV files (*.csv)",),
+        )
+        if not result:
+            return {"ok": False, "cancelled": True}
+
+        filepath = result if isinstance(result, str) else result[0]
+        try:
+            base._write_csv_export(filepath)
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+        return {"ok": True, "filename": os.path.basename(filepath)}
+
 
 def _patch_html_for_macos_1013() -> None:
     html = base.HTML_UI
-    if _TABLE_STYLE_NEW in html:
-        if _EXPORT_BUTTON_NEW in html:
-            return
-    if _EXPORT_BUTTON_OLD in html:
-        html = html.replace(_EXPORT_BUTTON_OLD, _EXPORT_BUTTON_NEW, 1)
-    if _TABLE_STYLE_OLD not in html:
-        raise RuntimeError("10.13 用テーブル CSS の差し替え対象が見つかりませんでした")
-    html = html.replace(_TABLE_STYLE_OLD, _TABLE_STYLE_NEW, 1)
+    if _TABLE_STYLE_NEW not in html:
+        if _TABLE_STYLE_OLD not in html:
+            raise RuntimeError("10.13 用テーブル CSS の差し替え対象が見つかりませんでした")
+        html = html.replace(_TABLE_STYLE_OLD, _TABLE_STYLE_NEW, 1)
+    if _EXPORT_JS_NEW not in html:
+        if _EXPORT_JS_OLD not in html:
+            raise RuntimeError("10.13 用 Export CSV の差し替え対象が見つかりませんでした")
+        html = html.replace(_EXPORT_JS_OLD, _EXPORT_JS_NEW, 1)
     base.HTML_UI = html
     base._HTML_UI_BYTES = html.encode("ascii", "xmlcharrefreplace")
 
@@ -111,4 +179,4 @@ _patch_html_for_macos_1013()
 
 
 if __name__ == "__main__":
-    base.run_app()
+    base.run_app(js_api=ExportApi())
