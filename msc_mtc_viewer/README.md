@@ -117,6 +117,8 @@ bash setup.sh --all
 各フォルダには配布用 `.app`、`Install_*.app`、受け手向け `README.md` を置く。
 インストーラは同じフォルダ内の本体 `.app` を Desktop にコピーし、`com.apple.quarantine` を外して起動する。
 
+> macOS 10.13.6 向け `x86_64_1013_py312` ビルドでは、互換性回避のため `Export CSV` ボタンを非表示にしている。
+
 ### 起動トラブル時のログ確認
 
 - Finder から `.app` が即終了した場合は `~/Library/Logs/MSC_MTC_Viewer/launch.log` を確認する

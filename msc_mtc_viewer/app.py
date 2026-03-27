@@ -46,6 +46,17 @@ WINDOW_X = _config.get("window_x")
 WINDOW_Y = _config.get("window_y")
 EXPORT_DIR = _config.get("export_dir", "~/Downloads/MSC_MTC_Viewer_CSV")
 
+
+def _should_hide_export_csv() -> bool:
+    """macOS 10.13 向け専用ビルドでは Export CSV を非表示にする。"""
+    if not getattr(sys, "frozen", False):
+        return False
+    exe_name = os.path.basename(sys.executable)
+    return exe_name.endswith("_x86_64_1013_py312")
+
+
+HIDE_EXPORT_CSV = _should_hide_export_csv()
+
 persistence.init(_config.get("settings_dir", "~/Documents/MSC_MTC_Viewer"))
 
 # ---------------------------------------------------------------------------
@@ -378,6 +389,7 @@ def api_settings():
             "raw_hex_visible": persistence.load_raw_hex_visible(),
             "max_display_rows": persistence.load_max_display_rows(),
             "export_dir": os.path.expanduser(EXPORT_DIR),
+            "hide_export_csv": HIDE_EXPORT_CSV,
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -969,17 +981,20 @@ let MAX_ROWS = 500;
 let autoScroll = true;
 let searchQuery = '';
 let exportDir = '';
+let hideExportCsv = false;
 
 // ---- 設定ロード ----
 async function loadSettings() {
   try {
     const res = await fetch('/api/settings');
-    const { raw_hex_visible, max_display_rows, export_dir } = await res.json();
+    const { raw_hex_visible, max_display_rows, export_dir, hide_export_csv } = await res.json();
     setRawHexVisible(raw_hex_visible);
     MAX_ROWS = max_display_rows || 500;
     const sel = document.getElementById('sel-max-rows');
     sel.value = String(MAX_ROWS);
     exportDir = export_dir || '';
+    hideExportCsv = !!hide_export_csv;
+    document.getElementById('btn-export').style.display = hideExportCsv ? 'none' : '';
   } catch (e) {}
 }
 
@@ -1397,6 +1412,7 @@ async function clearLog() {
 }
 
 async function exportCsv() {
+  if (hideExportCsv) return;
   if (!await showConfirm('Export current log as CSV?', 'Export', false, exportDir)) return;
   const btn = document.getElementById('btn-export');
   const origHtml = btn.innerHTML;

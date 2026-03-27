@@ -481,3 +481,9 @@ WKWebView が `http://127.0.0.1` へ確実に接続できるよう、`fix_plist(
 ```
 
 `NSAllowsLocalNetworking` はループバックアドレス（127.0.0.1）専用の許可であり、外部ネットワークへの影響はない。arm64 / x86_64 ビルドには追加しない。
+
+### macOS 10.13 向け UI 制限
+
+`x86_64_1013_py312` ビルドでは `Export CSV` ボタンを非表示にする。
+判定は `sys.frozen` かつ `sys.executable` の末尾が `_x86_64_1013_py312` であることを使う。
+通常の開発実行（`python app.py`）や他ビルドには適用しない。
