@@ -117,7 +117,8 @@ bash setup.sh --all
 各フォルダには配布用 `.app`、`Install_*.app`、受け手向け `README.md` を置く。
 インストーラは同じフォルダ内の本体 `.app` を Desktop にコピーし、`com.apple.quarantine` を外して起動する。
 
-> macOS 10.13.6 向け `x86_64_1013_py312` ビルドでは、互換性回避のため `Export CSV` ボタンを非表示にしている。
+> macOS 10.13.6 向け `x86_64_1013_py312` ビルドでは、互換性回避のため `app_1013.py` を使う。
+> `Export CSV` ボタンの非表示と MSC ログテーブルのヘッダ固定は、この 10.13 向け専用実装で切り替えている。
 
 ### 起動トラブル時のログ確認
 
@@ -135,7 +136,8 @@ dist/MSC_MTC_Viewer_x86_64_1013_py312.app/Contents/MacOS/MSC_MTC_Viewer_x86_64_1
 
 ```
 msc_mtc_viewer/
-├── app.py            # Flask サーバー + pywebview ウィンドウ + HTML/JS UI（埋め込み）
+├── app.py            # 標準ビルド用メインアプリ
+├── app_1013.py       # macOS 10.13.6 用ビルド専用エントリーポイント
 ├── decoder.py        # MSC バイト列デコード（純粋関数、rtmidi 依存なし）
 ├── midi_receiver.py  # python-rtmidi ポート管理 + スレッドセーフ Queue
 ├── persistence.py    # 接続ポートの保存・読み込み（JSON）

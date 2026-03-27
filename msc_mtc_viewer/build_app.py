@@ -39,6 +39,7 @@ ARCH_CONFIGS = {
         "venv": CURRENT_DIR / ".venv",
         "target_arch": "arm64",
         "app_name": f"{APP_NAME}_arm64",
+        "entrypoint": CURRENT_DIR / "app.py",
         "setup_hint": "bash setup.sh",
         "extra_env": {},
     },
@@ -46,6 +47,7 @@ ARCH_CONFIGS = {
         "venv": CURRENT_DIR / ".venv_x86",
         "target_arch": "x86_64",
         "app_name": f"{APP_NAME}_x86_64",
+        "entrypoint": CURRENT_DIR / "app.py",
         "setup_hint": "bash setup.sh --x86",
         "extra_env": {},
     },
@@ -53,6 +55,7 @@ ARCH_CONFIGS = {
         "venv": CURRENT_DIR / ".venv_x86_1013_py312",
         "target_arch": "x86_64",
         "app_name": f"{APP_NAME}_x86_64_1013_py312",
+        "entrypoint": CURRENT_DIR / "app_1013.py",
         "setup_hint": "bash setup.sh --x86-1013-py312",
         "extra_env": {},
     },
@@ -67,21 +70,14 @@ def run_ruff():
     """Ruff チェックは arm64 の .venv で実行（共通）"""
     print("=== Ruff チェック ===")
     ruff = CURRENT_DIR / ".venv" / "bin" / "ruff"
+    sources = ["decoder.py", "midi_receiver.py", "persistence.py", "app.py", "app_1013.py"]
     subprocess.run(
-        [str(ruff), "check", "decoder.py", "midi_receiver.py", "persistence.py", "app.py"],
+        [str(ruff), "check", *sources],
         cwd=CURRENT_DIR,
         check=True,
     )
     subprocess.run(
-        [
-            str(ruff),
-            "format",
-            "--check",
-            "decoder.py",
-            "midi_receiver.py",
-            "persistence.py",
-            "app.py",
-        ],
+        [str(ruff), "format", "--check", *sources],
         cwd=CURRENT_DIR,
         check=True,
     )
@@ -121,7 +117,9 @@ def patch_cocoa_for_1013(venv: Path) -> None:
         print(f"⚠️  cocoa.py が見つかりません: {cocoa_path}")
         return
 
-    original = "            if action.shouldPerformDownload() and webview_settings['ALLOW_DOWNLOADS']:"
+    original = (
+        "            if action.shouldPerformDownload() and webview_settings['ALLOW_DOWNLOADS']:"
+    )
     patched = (
         "            if (\n"
         "                action.respondsToSelector_('shouldPerformDownload')\n"
@@ -185,6 +183,7 @@ def build_arch(arch: str) -> bool:
     venv: Path = cfg["venv"]
     target_arch: str = cfg["target_arch"]
     app_name: str = cfg["app_name"]
+    entrypoint: Path = cfg["entrypoint"]
 
     if not venv.exists():
         print(f"⚠️  {arch} 用の venv が見つかりません ({venv})")
@@ -203,7 +202,7 @@ def build_arch(arch: str) -> bool:
     sep = ":" if os.name == "posix" else ";"
     work_dir = WORK_DIR / app_name
     args = [
-        str(CURRENT_DIR / "app.py"),
+        str(entrypoint),
         f"--name={app_name}",
         "--noconfirm",
         "--windowed",

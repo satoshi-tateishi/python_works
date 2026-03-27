@@ -485,5 +485,11 @@ WKWebView が `http://127.0.0.1` へ確実に接続できるよう、`fix_plist(
 ### macOS 10.13 向け UI 制限
 
 `x86_64_1013_py312` ビルドでは `Export CSV` ボタンを非表示にする。
-判定は `sys.frozen` かつ `sys.executable` の末尾が `_x86_64_1013_py312` であることを使う。
+この制限は `app.py` 側では持たず、`app_1013.py` が HTML を差し替えて適用する。
 通常の開発実行（`python app.py`）や他ビルドには適用しない。
+
+### macOS 10.13 向け専用エントリーポイント
+
+`x86_64_1013_py312` ビルドだけは `app.py` ではなく `app_1013.py` を PyInstaller の入力に使う。
+`app_1013.py` は `app` モジュールを import した上で、MSC ログテーブルの CSS と `Export CSV` ボタン表示だけを 10.13 向けに差し替えてから `run_app()` を呼ぶ。
+通常ビルドは従来どおり `app.py` を使う。
