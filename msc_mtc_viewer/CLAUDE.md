@@ -437,7 +437,47 @@ Intel / Apple Silicon それぞれ専用の .app を別ファイルとして生�
 |---|---|---|---|
 | arm64 | `.venv` | `--target-arch=arm64` | `MSC_MTC_Viewer_arm64.app` |
 | x86_64 | `.venv_x86` | `--target-arch=x86_64` | `MSC_MTC_Viewer_x86_64.app` |
+| x86_64_1013_py312 | `.venv_x86_1013_py312` | `--target-arch=x86_64` | `MSC_MTC_Viewer_x86_64_1013_py312.app` |
 
 - **arm64 venv**: `setup.sh` が python.org 版 Python 3.13 (universal2) で作成。`markupsafe` は arm64 専用 wheel のため `ARCHFLAGS="-arch x86_64 -arch arm64"` でソースビルド（`setup.sh` で自動対応済み）。
 - **x86_64 venv**: `setup.sh --x86` が `arch -x86_64 python3 -m venv .venv_x86` で作成（Rosetta 2 経由）。`python-rtmidi` は pip が x86_64 wheel を自動選択するため ARCHFLAGS 不要。
-- x86_64 ビルド時は `build_app.py` が `arch -x86_64 .venv_x86/bin/pyinstaller` をサブプロセスで呼ぶ。
+- **x86_64_1013_py312 venv**: `setup.sh --x86-1013-py312` が `arch -x86_64 python3.12 -m venv .venv_x86_1013_py312` で作成。Python 3.12 を使用する理由は `python-rtmidi 1.5.8` の x86_64 wheel が 3.12 向けに提供されているため。
+- x86_64 系ビルド時は `build_app.py` が `arch -x86_64 <venv>/bin/pyinstaller` をサブプロセスで呼ぶ。
+
+### macOS 10.13 向けビルドの特記事項
+
+`x86_64_1013_py312` ビルドは `build_app.py` が PyInstaller 実行前に以下の処理を自動で行う。
+
+**1. pywebview `cocoa.py` パッチ（`patch_cocoa_for_1013()`）**
+
+pywebview 6.1 の `cocoa.py` が `WKNavigationAction.shouldPerformDownload()` を呼び出すが、このメソッドは macOS 11.3 で追加されたため macOS 10.13 には存在しない。10.13 で呼び出すと PyObjC が例外を発生させ、`decisionHandler`（WKWebView のナビゲーション判定コールバック）が未呼出しになる。その結果 WKWebView のナビゲーションがハングし、ウィンドウが白いままになる。
+
+`build_app.py` はビルド前に `.venv_x86_1013_py312` 内の `cocoa.py` を自動パッチする:
+
+```python
+# Before（macOS 10.13 でハング）:
+if action.shouldPerformDownload() and webview_settings['ALLOW_DOWNLOADS']:
+
+# After（macOS 10.13 互換）:
+if (
+    action.respondsToSelector_('shouldPerformDownload')
+    and action.shouldPerformDownload()
+    and webview_settings['ALLOW_DOWNLOADS']
+):
+```
+
+`respondsToSelector_` は NSObject の基本メソッドで macOS 10.0 から存在する。venv を再作成した後も次回ビルド時に自動適用される。
+
+**2. `Info.plist` への `NSAppTransportSecurity` 追加**
+
+WKWebView が `http://127.0.0.1` へ確実に接続できるよう、`fix_plist()` が `NSAppTransportSecurity` を書き込む:
+
+```xml
+<key>NSAppTransportSecurity</key>
+<dict>
+    <key>NSAllowsArbitraryLoads</key><false/>
+    <key>NSAllowsLocalNetworking</key><true/>
+</dict>
+```
+
+`NSAllowsLocalNetworking` はループバックアドレス（127.0.0.1）専用の許可であり、外部ネットワークへの影響はない。arm64 / x86_64 ビルドには追加しない。

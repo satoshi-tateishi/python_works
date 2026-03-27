@@ -107,7 +107,42 @@ def clear_previous_builds(app_name: str):
                         shutil.rmtree(temp, ignore_errors=True)
 
 
-def fix_plist(app_name: str):
+def patch_cocoa_for_1013(venv: Path) -> None:
+    """pywebview cocoa.py の shouldPerformDownload() 呼び出しを macOS 10.13 互換に修正する。
+
+    shouldPerformDownload() は macOS 11.3 で追加された API のため、10.13 では存在しない。
+    呼び出すと PyObjC が例外を発生させ、decisionHandler が未呼び出しになる。
+    その結果 WKWebView のナビゲーションがハングし、ウィンドウが白いままになる。
+    """
+    cocoa_path = (
+        venv / "lib" / "python3.12" / "site-packages" / "webview" / "platforms" / "cocoa.py"
+    )
+    if not cocoa_path.exists():
+        print(f"⚠️  cocoa.py が見つかりません: {cocoa_path}")
+        return
+
+    original = "            if action.shouldPerformDownload() and webview_settings['ALLOW_DOWNLOADS']:"
+    patched = (
+        "            if (\n"
+        "                action.respondsToSelector_('shouldPerformDownload')\n"
+        "                and action.shouldPerformDownload()\n"
+        "                and webview_settings['ALLOW_DOWNLOADS']\n"
+        "            ):"
+    )
+
+    text = cocoa_path.read_text(encoding="utf-8")
+    if "respondsToSelector_('shouldPerformDownload')" in text:
+        print("  cocoa.py パッチ適用済み（スキップ）")
+        return
+    if original not in text:
+        print("⚠️  cocoa.py パッチ対象行が見つかりません（pywebview のバージョンが変わった可能性）")
+        return
+
+    cocoa_path.write_text(text.replace(original, patched), encoding="utf-8")
+    print("  cocoa.py に macOS 10.13 互換パッチを適用しました")
+
+
+def fix_plist(app_name: str, arch: str = ""):
     app_path = DIST_DIR / f"{app_name}.app"
     plist_path = app_path / "Contents" / "Info.plist"
     if not plist_path.exists():
@@ -125,6 +160,14 @@ def fix_plist(app_name: str):
     pl["CFBundleShortVersionString"] = version
     pl["CFBundleVersion"] = version
     pl["NSHumanReadableCopyright"] = f"Developer: {DEVELOPER}\nUpdated: {UPDATED}"
+
+    # macOS 10.13 向けビルドでは WKWebView が http://127.0.0.1 に接続できるよう
+    # NSAllowsLocalNetworking を Info.plist に明示する（ATS の防御的設定）
+    if arch == "x86_64_1013_py312":
+        pl["NSAppTransportSecurity"] = {
+            "NSAllowsArbitraryLoads": False,
+            "NSAllowsLocalNetworking": True,
+        }
 
     with open(plist_path, "wb") as f:
         plistlib.dump(pl, f)
@@ -150,6 +193,9 @@ def build_arch(arch: str) -> bool:
         return False
 
     print(f"--- {app_name} ビルド開始 ({arch}) ---\n")
+
+    if arch == "x86_64_1013_py312":
+        patch_cocoa_for_1013(venv)
 
     pyinstaller = venv / "bin" / "pyinstaller"
     clear_previous_builds(app_name)
@@ -196,7 +242,7 @@ def build_arch(arch: str) -> bool:
         print(f"\n❌ {arch} ビルドエラー\n")
         return False
 
-    fix_plist(app_name)
+    fix_plist(app_name, arch)
     print(f"\n✅ {arch} ビルド完了: {DIST_DIR}/{app_name}.app\n")
     return True
 
