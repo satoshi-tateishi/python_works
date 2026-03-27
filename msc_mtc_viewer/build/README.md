@@ -6,6 +6,7 @@
 
 - Intel Mac 用: `dist/MSC_MTC_Viewer_x86_64.app`
 - Apple Silicon 用: `dist/MSC_MTC_Viewer_arm64.app`
+- Intel Mac 10.13.6 用: `dist/MSC_MTC_Viewer_x86_64_1013_py312.app`
 
 ## 社内配布の基本方針
 
@@ -32,6 +33,15 @@
 └── MSC_MTC_Viewer_arm64.app
 ```
 
+### Intel Mac 10.13.6 向け
+
+```text
+配布フォルダ/
+└── MSC_MTC_Viewer_x86_64_1013_py312.app
+```
+
+インストーラ不要。macOS 10.13.6 は Gatekeeper が寛容なため quarantine 除去なしにダブルクリックで起動できる。
+
 ## 配布先ユーザーの手順
 
 ### Intel Mac / Apple Silicon 共通
@@ -40,6 +50,10 @@
 2. `Install_*.app` をダブルクリックする
 3. 初回拒否されたら `システム設定 > プライバシーとセキュリティ` で `Install_*.app` を許可する
 4. Desktop に配置された `MSC_MTC_Viewer_*.app` を使う
+
+### Intel Mac 10.13.6
+
+1. `MSC_MTC_Viewer_x86_64_1013_py312.app` をダブルクリックする（インストーラ不要）
 
 ## Automator で作るインストーラ
 
@@ -127,4 +141,4 @@ bash install_intel_sonoma.sh /path/to/MSC_MTC_Viewer_x86_64.app
 
 - Apple Silicon 上で Intel 向け `x86_64` ビルドを作ること自体は可能
 - 配布先で `壊れているため開けません` と出る場合、CPU 相違より Gatekeeper / quarantine の影響を先に疑う
-- macOS 10.13.6 向けは別系統で検証中
+- macOS 10.13.6 向けは `x86_64_1013_py312` ビルドを使用。インストーラ不要でダブルクリック起動を確認済み
