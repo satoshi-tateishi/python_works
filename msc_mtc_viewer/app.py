@@ -45,6 +45,48 @@ WINDOW_MIN_HEIGHT = _config.get("window_min_height", 400)
 WINDOW_X = _config.get("window_x")
 WINDOW_Y = _config.get("window_y")
 EXPORT_DIR = _config.get("export_dir", "~/Downloads/MSC_MTC_Viewer_CSV")
+CLOCK_SCALE_DEFAULT = max(0.6, min(1.6, float(_config.get("clock_scale_default", 1.0))))
+CLOCK_FONT_DEFAULT = str(_config.get("clock_font_default", "default"))
+
+CLOCK_FONT_OPTIONS = [
+    {
+        "value": "default",
+        "label": "Default",
+        "family": '"Helvetica Neue", -apple-system, BlinkMacSystemFont, sans-serif',
+    },
+    {
+        "value": "bold",
+        "label": "Bold",
+        "family": '"Arial Black", "Avenir Next Heavy", "Helvetica Neue", sans-serif',
+    },
+    {
+        "value": "digital",
+        "label": "Digital",
+        "family": 'Menlo, Monaco, "SFMono-Regular", monospace',
+    },
+    {
+        "value": "condensed",
+        "label": "Condensed",
+        "family": (
+            '"Avenir Next Condensed", "Helvetica Neue Condensed Black", "Arial Narrow", sans-serif'
+        ),
+    },
+    {
+        "value": "rounded",
+        "label": "Rounded",
+        "family": (
+            '"Arial Rounded MT Bold", "Hiragino Maru Gothic ProN", "Trebuchet MS", sans-serif'
+        ),
+    },
+    {
+        "value": "modern",
+        "label": "Modern",
+        "family": 'Futura, "Avenir Next", "Trebuchet MS", sans-serif',
+    },
+]
+_CLOCK_FONT_BY_VALUE = {item["value"]: item for item in CLOCK_FONT_OPTIONS}
+if CLOCK_FONT_DEFAULT not in _CLOCK_FONT_BY_VALUE:
+    CLOCK_FONT_DEFAULT = "default"
 
 persistence.init(_config.get("settings_dir", "~/Documents/MSC_MTC_Viewer"))
 
@@ -383,11 +425,20 @@ def api_logs():
 @app.route("/api/settings")
 def api_settings():
     """UI 設定（Raw Hex 表示状態・最大表示件数など）を返す。"""
+    saved_clock_font = persistence.load_clock_font(CLOCK_FONT_DEFAULT)
+    clock_font = (
+        saved_clock_font if saved_clock_font in _CLOCK_FONT_BY_VALUE else CLOCK_FONT_DEFAULT
+    )
     body = json.dumps(
         {
             "raw_hex_visible": persistence.load_raw_hex_visible(),
             "max_display_rows": persistence.load_max_display_rows(),
             "export_dir": os.path.expanduser(EXPORT_DIR),
+            "clock_scale": persistence.load_clock_scale(CLOCK_SCALE_DEFAULT),
+            "clock_scale_default": CLOCK_SCALE_DEFAULT,
+            "clock_font": clock_font,
+            "clock_font_default": CLOCK_FONT_DEFAULT,
+            "clock_font_options": CLOCK_FONT_OPTIONS,
         },
         ensure_ascii=False,
     ).encode("utf-8")
@@ -416,6 +467,32 @@ def api_save_max_display_rows():
     if rows not in (500, 1000, 5000):
         rows = 500
     persistence.save_max_display_rows(rows)
+    return json.dumps({"ok": True}), 200, _CT_JSON
+
+
+@app.route("/api/settings/clock_scale", methods=["POST"])
+def api_save_clock_scale():
+    """時計 UI の表示倍率を保存する。"""
+    try:
+        data = request.get_json(force=True) or {}
+        scale = float(data.get("clock_scale", CLOCK_SCALE_DEFAULT))
+    except Exception:
+        scale = CLOCK_SCALE_DEFAULT
+    persistence.save_clock_scale(scale)
+    return json.dumps({"ok": True}), 200, _CT_JSON
+
+
+@app.route("/api/settings/clock_font", methods=["POST"])
+def api_save_clock_font():
+    """時計 UI のフォント選択を保存する。"""
+    try:
+        data = request.get_json(force=True) or {}
+        font_key = str(data.get("clock_font", CLOCK_FONT_DEFAULT))
+    except Exception:
+        font_key = CLOCK_FONT_DEFAULT
+    if font_key not in _CLOCK_FONT_BY_VALUE:
+        font_key = CLOCK_FONT_DEFAULT
+    persistence.save_clock_font(font_key)
     return json.dumps({"ok": True}), 200, _CT_JSON
 
 
@@ -512,6 +589,8 @@ HTML_UI = """<!DOCTYPE html>
     --stop: #ff8080;
     --other: #f0c040;
     --border: #2a3a5e;
+    --clock-scale: 1;
+    --clock-font-family: "Helvetica Neue", -apple-system, BlinkMacSystemFont, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -820,12 +899,53 @@ HTML_UI = """<!DOCTYPE html>
     background: var(--bg);
     border-top: 1px solid var(--border);
     display: flex;
-    flex-direction: row;
+    justify-content: center;
+    padding: 14px 28px 18px;
+    user-select: none;
+  }
+  .clock-shell {
+    position: relative;
+    width: min(100%, 980px);
+    min-height: calc(246px * var(--clock-scale));
+    padding: 26px 180px 18px 26px;
+  }
+  .clock-resize-top {
+    position: absolute;
+    top: 0;
+    left: 26px;
+    right: 26px;
+    height: 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, #24385f 0%, #192947 100%);
+    cursor: ns-resize;
+    touch-action: none;
+    transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+  }
+  .clock-resize-top::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 84px;
+    height: 2px;
+    border-radius: 999px;
+    background: rgba(160, 196, 255, 0.55);
+    transform: translate(-50%, -50%);
+  }
+  .clock-resize-top:hover,
+  .clock-resize-top.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px rgba(160, 196, 255, 0.25);
+    background: #1f3155;
+  }
+  .clock-display {
+    display: flex;
     align-items: center;
     justify-content: center;
-    padding: 6px 24px;
-    gap: 20px;
-    user-select: none;
+    gap: 28px;
+    font-family: var(--clock-font-family);
+    min-height: 100%;
   }
   .clock-left {
     flex-shrink: 0;
@@ -833,18 +953,18 @@ HTML_UI = """<!DOCTYPE html>
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    gap: 3px;
+    gap: 6px;
   }
   .clock-weekday {
-    font-size: 22px;
+    font-size: calc(42px * var(--clock-scale));
     font-weight: 300;
     color: #7878cc;
     line-height: 1;
   }
   .clock-date {
-    font-size: 13px;
+    font-size: calc(24px * var(--clock-scale));
     color: #6060aa;
-    letter-spacing: 0.3px;
+    letter-spacing: 0.5px;
     line-height: 1;
   }
   .clock-time {
@@ -852,22 +972,61 @@ HTML_UI = """<!DOCTYPE html>
     display: flex;
     align-items: baseline;
     justify-content: center;
-    gap: 6px;
+    gap: 10px;
     line-height: 1;
     color: #7878cc;
   }
   .clock-hm {
-    font-size: 100px;
+    font-size: calc(188px * var(--clock-scale));
     font-weight: 300;
-    letter-spacing: -3px;
+    letter-spacing: -5px;
     font-variant-numeric: tabular-nums;
   }
   .clock-sec {
-    font-size: 50px;
+    font-size: calc(94px * var(--clock-scale));
     font-weight: 300;
     font-variant-numeric: tabular-nums;
     color: #6060aa;
-    margin-bottom: 6px;
+    margin-bottom: calc(12px * var(--clock-scale));
+  }
+  .clock-default-wrap {
+    position: absolute;
+    top: 26px;
+    right: 26px;
+  }
+  .clock-font-wrap {
+    position: absolute;
+    right: 26px;
+    bottom: 18px;
+  }
+  .clock-font-select {
+    min-width: 128px;
+  }
+  @media (max-width: 1320px) {
+    .clock-bar {
+      padding: 12px 16px 16px;
+    }
+    .clock-shell {
+      min-height: calc(292px * var(--clock-scale));
+      padding: 54px 18px 56px;
+    }
+    .clock-resize-top {
+      left: 18px;
+      right: 18px;
+    }
+    .clock-default-wrap {
+      top: 22px;
+      right: 18px;
+    }
+    .clock-font-wrap {
+      right: 18px;
+      bottom: 16px;
+    }
+    .clock-display {
+      gap: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
   }
 </style>
 </head>
@@ -964,13 +1123,26 @@ HTML_UI = """<!DOCTYPE html>
 </div>
 
 <div class="clock-bar" id="clock-bar">
-  <div class="clock-left">
-    <div class="clock-weekday" id="clock-weekday"></div>
-    <div class="clock-date" id="clock-date"></div>
-  </div>
-  <div class="clock-time">
-    <span class="clock-hm" id="clock-hm">--:--</span>
-    <span class="clock-sec" id="clock-sec">--</span>
+  <div class="clock-shell" id="clock-shell">
+    <div class="clock-resize-top" id="clock-resize-top" title="Drag to resize clock"></div>
+    <div class="clock-default-wrap">
+      <button class="btn" id="btn-clock-default" onclick="resetClockScaleDefault()"
+        title="Reset clock size to default">Default Size</button>
+    </div>
+    <div class="clock-display" id="clock-display">
+      <div class="clock-left">
+        <div class="clock-weekday" id="clock-weekday"></div>
+        <div class="clock-date" id="clock-date"></div>
+      </div>
+      <div class="clock-time">
+        <span class="clock-hm" id="clock-hm">--:--</span>
+        <span class="clock-sec" id="clock-sec">--</span>
+      </div>
+    </div>
+    <div class="clock-font-wrap">
+      <select class="btn clock-font-select" id="clock-font-select"
+        onchange="changeClockFont(this.value)" title="Clock font"></select>
+    </div>
   </div>
 </div>
 
@@ -979,18 +1151,144 @@ let MAX_ROWS = 500;
 let autoScroll = true;
 let searchQuery = '';
 let exportDir = '';
+const CLOCK_SCALE_MIN = 0.6;
+const CLOCK_SCALE_MAX = 1.6;
+let clockScale = 1.0;
+let clockScaleDefault = 1.0;
+let clockFont = 'default';
+let clockFontDefault = 'default';
+let clockFontOptions = [];
+let clockResizeState = null;
 
 // ---- 設定ロード ----
 async function loadSettings() {
   try {
     const res = await fetch('/api/settings');
-    const { raw_hex_visible, max_display_rows, export_dir } = await res.json();
+    const {
+      raw_hex_visible,
+      max_display_rows,
+      export_dir,
+      clock_scale,
+      clock_scale_default,
+      clock_font,
+      clock_font_default,
+      clock_font_options
+    } = await res.json();
     setRawHexVisible(raw_hex_visible);
     MAX_ROWS = max_display_rows || 500;
     const sel = document.getElementById('sel-max-rows');
     sel.value = String(MAX_ROWS);
     exportDir = export_dir || '';
+    clockScaleDefault = clampClockScale(clock_scale_default ?? 1.0);
+    clockFontDefault = clock_font_default || 'default';
+    clockFontOptions = Array.isArray(clock_font_options) ? clock_font_options : [];
+    renderClockFontOptions();
+    applyClockScale(clock_scale ?? clockScaleDefault);
+    applyClockFont(clock_font || clockFontDefault);
   } catch (e) {}
+}
+
+function clampClockScale(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return clockScaleDefault;
+  return Math.min(CLOCK_SCALE_MAX, Math.max(CLOCK_SCALE_MIN, Math.round(num * 100) / 100));
+}
+
+function getClockFontOption(value) {
+  return clockFontOptions.find(option => option.value === value) ||
+    clockFontOptions.find(option => option.value === clockFontDefault) ||
+    clockFontOptions[0] || null;
+}
+
+function renderClockFontOptions() {
+  const select = document.getElementById('clock-font-select');
+  select.innerHTML = '';
+  clockFontOptions.forEach(option => {
+    const el = document.createElement('option');
+    el.value = option.value;
+    el.textContent = option.label;
+    select.appendChild(el);
+  });
+}
+
+function applyClockScale(value) {
+  clockScale = clampClockScale(value);
+  document.documentElement.style.setProperty('--clock-scale', String(clockScale));
+}
+
+function applyClockFont(value) {
+  const option = getClockFontOption(value);
+  if (!option) return;
+  clockFont = option.value;
+  document.documentElement.style.setProperty('--clock-font-family', option.family);
+  document.getElementById('clock-font-select').value = option.value;
+}
+
+async function saveClockScale() {
+  try {
+    await fetch('/api/settings/clock_scale', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clock_scale: clockScale })
+    });
+  } catch (e) {}
+}
+
+async function saveClockFont() {
+  try {
+    await fetch('/api/settings/clock_font', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clock_font: clockFont })
+    });
+  } catch (e) {}
+}
+
+async function resetClockScaleDefault() {
+  applyClockScale(clockScaleDefault);
+  await saveClockScale();
+}
+
+async function changeClockFont(value) {
+  applyClockFont(value);
+  await saveClockFont();
+}
+
+function startClockResize(event) {
+  const handle = document.getElementById('clock-resize-top');
+  clockResizeState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startScale: clockScale
+  };
+  handle.classList.add('active');
+  handle.setPointerCapture(event.pointerId);
+}
+
+function moveClockResize(event) {
+  if (!clockResizeState || event.pointerId !== clockResizeState.pointerId) return;
+  const deltaY = clockResizeState.startY - event.clientY;
+  applyClockScale(clockResizeState.startScale + (deltaY / 220));
+}
+
+async function endClockResize(event) {
+  if (!clockResizeState || event.pointerId !== clockResizeState.pointerId) return;
+  const handle = document.getElementById('clock-resize-top');
+  handle.classList.remove('active');
+  if (handle.hasPointerCapture(event.pointerId)) {
+    handle.releasePointerCapture(event.pointerId);
+  }
+  clockResizeState = null;
+  await saveClockScale();
+}
+
+function initClockControls() {
+  const handle = document.getElementById('clock-resize-top');
+  handle.addEventListener('pointerdown', startClockResize);
+  handle.addEventListener('pointermove', moveClockResize);
+  handle.addEventListener('pointerup', endClockResize);
+  handle.addEventListener('pointercancel', endClockResize);
 }
 
 function setRawHexVisible(visible) {
@@ -1425,6 +1723,7 @@ async function exportCsv() {
 // ---- 初期化 ----
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
+  initClockControls();
   // 設定ロード後にバッファの初期ログを取得（ページリロード時に既存ログを復元）
   try {
     const res = await fetch('/api/logs?limit=' + MAX_ROWS);

@@ -54,7 +54,14 @@ USB-MIDI インターフェースや IAC から受信した **MIDI Show Control 
 - **CSV エクスポート**: 表示中のログを `msc_log_YYYYMMDD_HHMMSS.csv` として保存
 - **Raw Hex 列**: 表示 / 非表示を切替可能
 - **自動スクロール**: ON/OFF 切替
-- **最大表示件数**: 100 / 200 / 500 / 1000 行から選択
+- **最大表示件数**: 500 / 1000 / 5000 行から選択
+
+### システム時計 UI
+- UI 下部に曜日・日付・システム時計を常時表示
+- 時計上辺のバーをドラッグして時計全体を拡大縮小
+- `Default Size` ボタンで `config.json` の既定サイズへ復帰
+- 右下のドロップダウンで時計フォントを切替
+- 時計サイズとフォント選択は `settings.json` に保存
 
 ---
 
@@ -168,9 +175,13 @@ msc_mtc_viewer/
 {
   "saved_ports": ["IAC ドライバ Bus 1"],
   "raw_hex_visible": true,
-  "max_display_rows": 500
+  "max_display_rows": 500,
+  "clock_scale": 1.0,
+  "clock_font": "default"
 }
 ```
+
+`config.json` には時計 UI の既定値として `clock_scale_default` と `clock_font_default` を持つ。
 
 ---
 

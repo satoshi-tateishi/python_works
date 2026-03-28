@@ -13,6 +13,8 @@
   "window_x": null,
   "window_y": null,
   "max_log_rows": 5000,
+  "clock_scale_default": 1.0,
+  "clock_font_default": "default",
   "export_dir": "~/Downloads/MSC_MTC_Viewer_CSV",
   "settings_dir": "~/Library/Application Support/MSC_MTC_Viewer"
 }

@@ -268,6 +268,9 @@ drain_queue() -> list[dict]          # Queue を非ブロッキングで全取�
 | GET | `/api/logs?limit=N` | ログバッファ末尾 N 件を返す（`renderRows()` が使用） |
 | GET | `/api/settings` | UI 設定取得（`raw_hex_visible` 等） |
 | POST | `/api/settings/raw_hex_visible` | Raw Hex 列表示状態を保存 `{"visible": bool}` |
+| POST | `/api/settings/max_display_rows` | 最大表示件数を保存 `{"rows": 500\|1000\|5000}` |
+| POST | `/api/settings/clock_scale` | 時計 UI の拡大率を保存 `{"clock_scale": number}` |
+| POST | `/api/settings/clock_font` | 時計 UI のフォント選択を保存 `{"clock_font": string}` |
 
 ## JS テーブル描画関数の使い分け
 
@@ -296,6 +299,10 @@ persistence.load_raw_hex_visible()          # Raw Hex 表示状態 → bool（�
 persistence.save_raw_hex_visible(bool)      # Raw Hex 表示状態を保存
 persistence.load_max_display_rows()         # 最大表示件数 → int（デフォルト 500）
 persistence.save_max_display_rows(rows)     # 最大表示件数を保存
+persistence.load_clock_scale(default=1.0)   # 時計 UI スケール → float（0.6〜1.6 にクランプ）
+persistence.save_clock_scale(scale)         # 時計 UI スケールを保存
+persistence.load_clock_font(default="default")  # 時計 UI フォントキー → str
+persistence.save_clock_font(font_key)       # 時計 UI フォントキーを保存
 ```
 
 ## config.json の構造
@@ -316,6 +323,8 @@ persistence.save_max_display_rows(rows)     # 最大表示件数を保存
   "window_x": null,            // null = OS デフォルト位置
   "window_y": null,
   "max_log_rows": 5000,        // ログバッファ最大行数（サーバー側保持上限）
+  "clock_scale_default": 1.0,  // 時計 UI の既定倍率
+  "clock_font_default": "default", // 時計 UI の既定フォントキー
   "export_dir": "~/Downloads/MSC_MTC_Viewer_CSV",
   "settings_dir": "~/Library/Application Support/MSC_MTC_Viewer"
 }
@@ -338,7 +347,7 @@ body は `flex-direction: column` の縦並び。main-content が `flex-directio
 │      MSC ログテーブル     │      MTC タイムコード       │
 │      （列幅固定+filler）  │      mtc-viewer は下半分   │
 ├──────────────────────────┴───────────────────────────┤
-│ clock-bar (flex-shrink: 0) — システム時計（HH:MM ss 日付）│
+│ clock-bar (flex-shrink: 0) — システム時計 + UI 設定      │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -408,7 +417,23 @@ Retina ディスプレイの物理解像度（例: 2560×1664）は CSS px と�
 
 ## システム時計（clock-bar）
 
-UI 最下部に `HH:MM ss` と日付・曜日を常時表示。
+UI 最下部に `HH:MM ss` と日付・曜日を常時表示。時計 UI は `clock_scale` と `clock_font`
+で可変にしており、設定は `settings.json` に保存される。
+
+**現在の UI 構成:**
+- 中央: 曜日・日付・時刻
+- 右上: `Default Size` ボタン
+- 右下: フォント選択ドロップダウン
+- 上辺: 横長の可視リサイズバー。上方向ドラッグで拡大、下方向ドラッグで縮小
+
+**フォント選択:**
+- `default`, `bold`, `digital`, `condensed`, `rounded`, `modern` の 6 種
+- 現在は同梱フォントではなく macOS 標準フォントスタックで実装
+- ドロップダウンの `Default` は `config.json` の `clock_font_default` に戻す
+
+**サイズ既定値復帰:**
+- `Default Size` は `config.json` の `clock_scale_default` に戻す
+- フォント既定値には影響しない
 
 **秒境界への同期:**
 `setInterval(fn, 1000)` は開始タイミング次第で最大 1 秒の遅延が生じる。

@@ -104,3 +104,34 @@ def save_max_display_rows(rows: int) -> None:
         data = _load_all()
         data["max_display_rows"] = rows
         _save_all(data)
+
+
+def load_clock_scale(default: float = 1.0) -> float:
+    """時計 UI の表示倍率を返す。"""
+    try:
+        val = float(_load_all().get("clock_scale", default))
+    except (TypeError, ValueError):
+        val = default
+    return max(0.6, min(1.6, val))
+
+
+def save_clock_scale(scale: float) -> None:
+    """時計 UI の表示倍率を保存する。"""
+    with _settings_lock:
+        data = _load_all()
+        data["clock_scale"] = max(0.6, min(1.6, float(scale)))
+        _save_all(data)
+
+
+def load_clock_font(default: str = "default") -> str:
+    """時計 UI のフォントキーを返す。"""
+    value = _load_all().get("clock_font", default)
+    return value if isinstance(value, str) and value else default
+
+
+def save_clock_font(font_key: str) -> None:
+    """時計 UI のフォントキーを保存する。"""
+    with _settings_lock:
+        data = _load_all()
+        data["clock_font"] = str(font_key)
+        _save_all(data)
