@@ -127,6 +127,106 @@ _EXPORT_JS_NEW = """async function exportCsv() {
 }
 """
 
+_CLOCK_WIDTH_OLD = """    width: min(100%, 980px);"""
+
+_CLOCK_WIDTH_NEW = """    width: 100%;
+    max-width: 980px;"""
+
+_CLOCK_NULLISH_OLD = """    clockScaleDefault = clampClockScale(clock_scale_default ?? 1.0);
+    clockFontDefault = clock_font_default || 'default';
+    clockFontOptions = Array.isArray(clock_font_options) ? clock_font_options : [];
+    renderClockFontOptions();
+    applyClockScale(clock_scale ?? clockScaleDefault);
+    applyClockFont(clock_font || clockFontDefault);"""
+
+_CLOCK_NULLISH_NEW = """    clockScaleDefault = clampClockScale(
+      clock_scale_default == null ? 1.0 : clock_scale_default
+    );
+    clockFontDefault = clock_font_default || 'default';
+    clockFontOptions = Array.isArray(clock_font_options) ? clock_font_options : [];
+    renderClockFontOptions();
+    applyClockScale(clock_scale == null ? clockScaleDefault : clock_scale);
+    applyClockFont(clock_font || clockFontDefault);"""
+
+_CLOCK_RESIZE_JS_OLD = """function startClockResize(event) {
+  const handle = document.getElementById('clock-resize-top');
+  clockResizeState = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startScale: clockScale
+  };
+  handle.classList.add('active');
+  handle.setPointerCapture(event.pointerId);
+}
+
+function moveClockResize(event) {
+  if (!clockResizeState || event.pointerId !== clockResizeState.pointerId) return;
+  const deltaY = clockResizeState.startY - event.clientY;
+  applyClockScale(clockResizeState.startScale + (deltaY / 220));
+}
+
+async function endClockResize(event) {
+  if (!clockResizeState || event.pointerId !== clockResizeState.pointerId) return;
+  const handle = document.getElementById('clock-resize-top');
+  handle.classList.remove('active');
+  if (handle.hasPointerCapture(event.pointerId)) {
+    handle.releasePointerCapture(event.pointerId);
+  }
+  clockResizeState = null;
+  await saveClockScale();
+}
+
+function initClockControls() {
+  const handle = document.getElementById('clock-resize-top');
+  handle.addEventListener('pointerdown', startClockResize);
+  handle.addEventListener('pointermove', moveClockResize);
+  handle.addEventListener('pointerup', endClockResize);
+  handle.addEventListener('pointercancel', endClockResize);
+}
+"""
+
+_CLOCK_RESIZE_JS_NEW = """function startClockResize(event) {
+  const handle = document.getElementById('clock-resize-top');
+  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+  clockResizeState = {
+    startY: clientY,
+    startScale: clockScale
+  };
+  handle.classList.add('active');
+  event.preventDefault();
+}
+
+function moveClockResize(event) {
+  if (!clockResizeState) return;
+  const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+  const deltaY = clockResizeState.startY - clientY;
+  applyClockScale(clockResizeState.startScale + (deltaY / 220));
+  if (event.cancelable) {
+    event.preventDefault();
+  }
+}
+
+async function endClockResize() {
+  if (!clockResizeState) return;
+  const handle = document.getElementById('clock-resize-top');
+  handle.classList.remove('active');
+  clockResizeState = null;
+  await saveClockScale();
+}
+
+function initClockControls() {
+  const handle = document.getElementById('clock-resize-top');
+  handle.addEventListener('mousedown', startClockResize);
+  document.addEventListener('mousemove', moveClockResize);
+  document.addEventListener('mouseup', endClockResize);
+  handle.addEventListener('touchstart', startClockResize, { passive: false });
+  document.addEventListener('touchmove', moveClockResize, { passive: false });
+  document.addEventListener('touchend', endClockResize);
+  document.addEventListener('touchcancel', endClockResize);
+}
+"""
+
 
 class ExportApi:
     def __init__(self) -> None:
@@ -171,6 +271,18 @@ def _patch_html_for_macos_1013() -> None:
         if _EXPORT_JS_OLD not in html:
             raise RuntimeError("10.13 用 Export CSV の差し替え対象が見つかりませんでした")
         html = html.replace(_EXPORT_JS_OLD, _EXPORT_JS_NEW, 1)
+    if _CLOCK_WIDTH_NEW not in html:
+        if _CLOCK_WIDTH_OLD not in html:
+            raise RuntimeError("10.13 用時計 CSS の差し替え対象が見つかりませんでした")
+        html = html.replace(_CLOCK_WIDTH_OLD, _CLOCK_WIDTH_NEW, 1)
+    if _CLOCK_NULLISH_NEW not in html:
+        if _CLOCK_NULLISH_OLD not in html:
+            raise RuntimeError("10.13 用時計設定 JS の差し替え対象が見つかりませんでした")
+        html = html.replace(_CLOCK_NULLISH_OLD, _CLOCK_NULLISH_NEW, 1)
+    if _CLOCK_RESIZE_JS_NEW not in html:
+        if _CLOCK_RESIZE_JS_OLD not in html:
+            raise RuntimeError("10.13 用時計ドラッグ JS の差し替え対象が見つかりませんでした")
+        html = html.replace(_CLOCK_RESIZE_JS_OLD, _CLOCK_RESIZE_JS_NEW, 1)
     base.HTML_UI = html
     base._HTML_UI_BYTES = html.encode("ascii", "xmlcharrefreplace")
 
